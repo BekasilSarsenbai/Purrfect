@@ -1,8 +1,9 @@
 const rateLimit = require("express-rate-limit");
+const env = require("../config/env");
 
 const authRateLimit = rateLimit({
   windowMs: 60 * 1000,
-  limit: 5,
+  limit: env.NODE_ENV === "test" ? 1000 : 5,
   standardHeaders: true,
   legacyHeaders: false,
   message: {

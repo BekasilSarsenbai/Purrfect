@@ -133,6 +133,61 @@ router.post("/:orderId/handover-confirm", requireAuth, requireRoles("BUYER"), as
   }
 });
 
+router.get("/:orderId", requireAuth, async (req, res, next) => {
+  try {
+    const orderId = z.string().uuid().parse(req.params.orderId);
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!order) throw new ApiError(404, "NOT_FOUND", "Order not found");
+
+    const isOwner = order.buyerId === req.user.id || order.sellerId === req.user.id;
+    const isStaff = ["MODERATOR", "ADMIN"].includes(req.user.role);
+    if (!isOwner && !isStaff) throw new ApiError(403, "FORBIDDEN", "No access to this order");
+
+    return res.status(200).json(order);
+  } catch (error) {
+    if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
+    return next(error);
+  }
+});
+
+router.post("/:orderId/cancel", requireAuth, async (req, res, next) => {
+  try {
+    const orderId = z.string().uuid().parse(req.params.orderId);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { id: orderId } });
+      if (!order) throw new ApiError(404, "NOT_FOUND", "Order not found");
+      const isOwner = order.buyerId === req.user.id || order.sellerId === req.user.id;
+      if (!isOwner) throw new ApiError(403, "FORBIDDEN", "No access to this order");
+      if (order.status !== "FUNDED_100") throw new ApiError(409, "CONFLICT", "Order cannot be cancelled now");
+
+      await tx.escrowTransaction.create({
+        data: {
+          orderId,
+          txType: "REFUND_FULL",
+          amountKzt: order.totalAmountKzt,
+          idempotencyKey: `cancel_refund_${orderId}`,
+          metadataJson: { actorUserId: req.user.id },
+        },
+      });
+
+      await tx.listing.update({
+        where: { id: order.listingId },
+        data: { status: "PUBLISHED" },
+      });
+
+      return tx.order.update({
+        where: { id: orderId },
+        data: { status: "CANCELLED" },
+      });
+    });
+    return res.status(200).json(updated);
+  } catch (error) {
+    if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
+    return next(error);
+  }
+});
+
 router.get("/", requireAuth, async (req, res, next) => {
   try {
     const limit = Math.min(Number(req.query.limit || 20), 100);

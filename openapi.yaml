@@ -697,6 +697,61 @@ paths:
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /admin/users/{userId}/status:
+    patch:
+      tags: [admin]
+      summary: Update user status as admin
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserStatusRequest'
+      responses:
+        '200':
+          description: User status updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/audit-logs:
+    get:
+      tags: [admin]
+      summary: List audit logs as admin
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - in: query
+          name: action
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audit logs page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAuditLogs'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -873,6 +928,19 @@ components:
           type: string
           nullable: true
           example: Escalated user to moderation team for on-call rotation.
+
+    UpdateUserStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ACTIVE, SUSPENDED, DELETED]
+          example: SUSPENDED
+        reason:
+          type: string
+          nullable: true
+          example: Suspended due to repeated policy violations.
 
     AuthResponse:
       type: object
@@ -1169,6 +1237,38 @@ components:
           type: string
           format: date-time
 
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        actorUserId:
+          type: string
+          format: uuid
+          nullable: true
+        action:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+        beforeJson:
+          type: object
+          nullable: true
+        afterJson:
+          type: object
+          nullable: true
+        ipAddress:
+          type: string
+          nullable: true
+        userAgent:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
     PageMeta:
       type: object
       required: [hasNext, nextCursor]
@@ -1220,5 +1320,16 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DisputeEvidence'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    PaginatedAuditLogs:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLog'
         meta:
           $ref: '#/components/schemas/PageMeta'

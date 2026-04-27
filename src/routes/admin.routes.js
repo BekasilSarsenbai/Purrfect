@@ -11,6 +11,11 @@ const updateRoleSchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
+const updateStatusSchema = z.object({
+  status: z.enum(["ACTIVE", "SUSPENDED", "DELETED"]),
+  reason: z.string().max(500).optional(),
+});
+
 router.patch("/users/:userId/role", requireAuth, requireRoles("ADMIN"), async (req, res, next) => {
   try {
     const body = updateRoleSchema.parse(req.body);
@@ -46,6 +51,61 @@ router.patch("/users/:userId/role", requireAuth, requireRoles("ADMIN"), async (r
     if (error instanceof z.ZodError) {
       return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
     }
+    return next(error);
+  }
+});
+
+router.patch("/users/:userId/status", requireAuth, requireRoles("ADMIN"), async (req, res, next) => {
+  try {
+    const body = updateStatusSchema.parse(req.body);
+    const userId = z.string().uuid().parse(req.params.userId);
+    const existing = await prisma.user.findUnique({ where: { id: userId } });
+    if (!existing) throw new ApiError(404, "NOT_FOUND", "User not found");
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const changed = await tx.user.update({
+        where: { id: userId },
+        data: { status: body.status },
+        select: { id: true, email: true, role: true, status: true, displayName: true, trustScore: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user.id,
+          action: "ADMIN_STATUS_UPDATE",
+          entityType: "User",
+          entityId: userId,
+          beforeJson: { status: existing.status },
+          afterJson: { status: body.status, reason: body.reason || null },
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"] || null,
+        },
+      });
+      return changed;
+    });
+    return res.status(200).json(updated);
+  } catch (error) {
+    if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
+    return next(error);
+  }
+});
+
+router.get("/audit-logs", requireAuth, requireRoles("ADMIN"), async (req, res, next) => {
+  try {
+    const limit = Math.min(Number(req.query.limit || 20), 100);
+    const cursor = req.query.cursor ? String(req.query.cursor) : null;
+    const action = req.query.action ? String(req.query.action) : undefined;
+
+    const data = await prisma.auditLog.findMany({
+      where: action ? { action } : undefined,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    });
+    const hasNext = data.length > limit;
+    const slice = hasNext ? data.slice(0, limit) : data;
+    const nextCursor = hasNext ? slice[slice.length - 1].id : null;
+    return res.status(200).json({ data: slice, meta: { hasNext, nextCursor } });
+  } catch (error) {
     return next(error);
   }
 });

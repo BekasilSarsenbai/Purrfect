@@ -7,6 +7,31 @@ on:
 jobs:
   test-and-build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: purrfect
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d purrfect"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    env:
+      NODE_ENV: test
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/purrfect?schema=public
+      JWT_ACCESS_SECRET: ci_access_secret_key_which_is_long_enough_123
+      JWT_REFRESH_SECRET: ci_refresh_secret_key_which_is_long_enough_456
+      JWT_ACCESS_EXPIRES_IN: 15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      CORS_ORIGINS: http://localhost:3000
+      PLATFORM_FEE_PERCENT: 5
+      REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -17,7 +42,13 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
+      - name: Prisma generate
+        run: npm run prisma:generate
+      - name: Prisma migrate deploy
+        run: npm run prisma:deploy
       - name: Unit tests
         run: npm run test:unit
+      - name: Integration tests
+        run: npm run test:integration
       - name: Docker build
         run: docker build -t purrfect-api .
