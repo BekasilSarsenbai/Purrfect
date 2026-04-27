@@ -14,6 +14,7 @@ const resolveSchema = z.object({
 
 router.get("/disputes", requireAuth, requireRoles("MODERATOR", "ADMIN"), async (req, res, next) => {
   try {
+    // COMPLEXITY_REQ_4: fraud/risk moderation queue with status-based triage.
     const limit = Math.min(Number(req.query.limit || 20), 100);
     const cursor = req.query.cursor ? String(req.query.cursor) : null;
     const status = req.query.status ? String(req.query.status) : undefined;

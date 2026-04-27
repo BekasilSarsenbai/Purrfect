@@ -57,6 +57,7 @@ router.patch("/users/:userId/role", requireAuth, requireRoles("ADMIN"), async (r
 
 router.patch("/users/:userId/status", requireAuth, requireRoles("ADMIN"), async (req, res, next) => {
   try {
+    // COMPLEXITY_REQ_5: trust-aware policy enforcement through admin account controls.
     const body = updateStatusSchema.parse(req.body);
     const userId = z.string().uuid().parse(req.params.userId);
     const existing = await prisma.user.findUnique({ where: { id: userId } });

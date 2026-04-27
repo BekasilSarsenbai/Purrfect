@@ -37,6 +37,7 @@ router.post("/", requireAuth, async (req, res, next) => {
     const existing = await prisma.dispute.findUnique({ where: { orderId: body.orderId } });
     if (existing) throw new ApiError(409, "CONFLICT", "Dispute already exists for order");
 
+    // COMPLEXITY_REQ_3: evidence-driven dispute engine with linked evidence records.
     const created = await prisma.$transaction(async (tx) => {
       const dispute = await tx.dispute.create({
         data: {

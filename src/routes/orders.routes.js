@@ -24,6 +24,7 @@ router.post("/", requireAuth, requireRoles("BUYER"), async (req, res, next) => {
     if (listing.sellerId === req.user.id) throw new ApiError(409, "CONFLICT", "Cannot order own listing");
     const settlement = calculateSettlement(listing.priceKzt, env.PLATFORM_FEE_PERCENT);
 
+    // COMPLEXITY_REQ_1: milestone escrow settlement with atomic transactional writes.
     const order = await prisma.$transaction(async (tx) => {
       const createdOrder = await tx.order.create({
         data: {
@@ -74,6 +75,7 @@ router.post("/:orderId/handover-confirm", requireAuth, requireRoles("BUYER"), as
   try {
     const orderId = z.string().uuid().parse(req.params.orderId);
 
+    // COMPLEXITY_REQ_2: veterinary inspection gate starts 72h deadline on handover.
     const updated = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new ApiError(404, "NOT_FOUND", "Order not found");

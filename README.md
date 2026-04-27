@@ -61,3 +61,4 @@ docker compose up --build
 - Environment fails fast if required secrets are missing.
 - Refresh token rotation is implemented with hashed token storage and revocation tracking.
 - Financial state changes in order flow run inside Prisma transactions.
+- Migration baseline is intentionally a single full-schema init migration. Additional migrations are created incrementally only when schema changes.
