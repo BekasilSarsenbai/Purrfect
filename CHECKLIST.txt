@@ -1,0 +1,3 @@
+[x] I validated openapi.yaml in editor.swagger.io
+[ ] I ran SQL schema through syntax checker
+[x] All documents include clear section headers (txt format)

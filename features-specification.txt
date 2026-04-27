@@ -1,0 +1,137 @@
+# Purrfect - Features Specification
+
+## 1) Project Scope
+Purrfect is a secure marketplace backend for buying and selling cats with anti-fraud controls, escrow payments, veterinary inspection, and moderated dispute resolution.
+
+Track selection: BYOI (Custom challenges).
+Framework direction: Express.js + Prisma + PostgreSQL + Redis.
+
+## 2) User Roles
+- Buyer: searches listings, pays through escrow, performs veterinary check, confirms or disputes order.
+- Seller (Breeder/Owner): creates listings, uploads proof documents, hands over cat, receives milestone payouts.
+- Moderator: verifies documents, reviews fraud flags, resolves disputes with evidence-based decisions.
+- Admin: configures policy limits (fees, rate limits, thresholds), manages roles and platform-level controls.
+- VetPartner (optional in phase 2): validates veterinary report authenticity through partner clinic integration.
+
+## 3) Feature List by Role
+
+### Buyer
+- Register/login with JWT (access + refresh).
+- Browse and filter listings with cursor pagination.
+- View seller trust signals (verified badge, dispute rate, listing quality score).
+- Reserve and fund order (100% into escrow).
+- Confirm handover event.
+- Upload veterinary check report within 72-hour inspection window.
+- Approve completion or open dispute.
+- Track order timeline and payout/dispute status.
+
+### Seller
+- Complete profile and verification workflow.
+- Create/update listing draft with media, health, age, and breed metadata.
+- Submit pedigree/vaccination documents for verification.
+- Publish listings only after policy checks and moderation.
+- Accept reservation and coordinate handover.
+- Receive first 50% payout after handover confirmation.
+- Receive final 50% payout after successful inspection close.
+- Respond to dispute evidence requests.
+
+### Moderator
+- Review high-risk listings and KYC/document flags.
+- Approve/reject listings and seller verification requests.
+- Process disputes: full refund, partial refund, or release funds.
+- Apply sanctions (temporary listing freeze, mandatory manual review).
+- Maintain moderation notes and decision rationale.
+
+### Admin
+- Manage RBAC roles and permission matrix.
+- Configure risk engine thresholds and policy toggles.
+- Configure platform fee and payout split behavior.
+- Monitor fraud KPIs and operational SLAs.
+- Audit critical security and financial events.
+
+## 4) Core Business Workflows
+
+### Workflow A: Seller Listing Lifecycle
+1. Seller creates draft listing with mandatory fields.
+2. System validates minimum kitten age and required medical fields.
+3. Seller uploads supporting documents (pedigree/passport/vaccine records).
+4. Listing enters pending_review.
+5. Risk engine computes listing fraud score.
+6. Moderator approves or rejects.
+7. Approved listing becomes published and visible to buyers.
+
+### Workflow B: Escrow Purchase with 50/50 Split + 72h Vet Window
+1. Buyer selects published listing and creates order.
+2. Buyer pays 100% amount into escrow.
+3. Order status becomes funded_100.
+4. Buyer and seller complete handover; buyer confirms handover.
+5. System releases first payout milestone: 50% of seller net.
+6. System starts inspection window: 72 hours.
+7. Buyer performs veterinary check and uploads report.
+8. If report accepted and buyer confirms: system releases final 50%; order completed.
+9. If issue detected: buyer opens dispute; second milestone remains frozen until moderator decision.
+
+### Workflow C: Dispute Resolution
+1. Buyer opens dispute with reason and evidence.
+2. System locks final payout and marks order disputed.
+3. Moderator reviews evidence from both sides.
+4. Moderator decision:
+   - full_refund to buyer, or
+   - partial_refund + partial_release, or
+   - release_remaining_to_seller.
+5. Ledger entries are finalized transactionally.
+6. Risk score and seller trust metrics are updated.
+
+### Workflow D: Fraud Review and Trust Adjustment
+1. Listing/order events produce fraud signals (price anomaly, repeated complaints, fake docs).
+2. Risk engine updates seller trust level.
+3. Threshold breach triggers automatic moderation queue.
+4. Moderator outcome can apply account sanctions and stricter future limits.
+
+## 5) Constraints and Enforced Rules
+
+### Listing and Animal Welfare Rules
+- A cat listing must include date of birth; kitten younger than policy minimum cannot be published.
+- Premium breed listing requires verified pedigree evidence before publish.
+- Listing without vaccination status cannot enter published state.
+
+### Transaction and Escrow Rules
+- All funds operations must pass through escrow; direct platform bypass is forbidden.
+- First payout (50%) is allowed only after handover confirmation.
+- Second payout (50%) is allowed only after inspection success or no unresolved dispute.
+- Financial transitions must be ACID transactional and idempotent.
+
+### Inspection and Dispute Rules
+- Inspection window is exactly 72 hours from handover confirmation.
+- Buyer can open dispute only within inspection window or while unresolved inspection evidence exists.
+- Final payout is frozen immediately when dispute opens.
+- Moderation decision is mandatory before releasing frozen payout in disputed orders.
+
+### Identity and Access Rules
+- JWT access token is short-lived; refresh token uses rotation and revocation checks.
+- Role-based access control is mandatory for moderator/admin endpoints.
+- Seller cannot moderate own listing/dispute.
+
+### Data and API Rules
+- Cursor-based pagination is required for all list endpoints.
+- All write operations must log audit events for who/what/when.
+- No hardcoded secrets; startup fails if required env vars are missing.
+
+## 6) BYOI Custom Backend Complexity Requirements
+1. Milestone Escrow Settlement:
+   - Split payout logic with frozen final milestone and ACID consistency.
+2. Veterinary Inspection Gate:
+   - Time-bound quality verification that controls financial release.
+3. Evidence-Driven Dispute Engine:
+   - Structured evidence model and deterministic moderation outcomes.
+4. Fraud Risk Scoring:
+   - Rule-based anomaly detection influencing listing visibility and trust.
+5. Trust-Aware Policy Enforcement:
+   - Dynamic operational limits (manual review only, listing cap, payout restrictions) based on historical behavior.
+
+## 7) Non-Functional Requirements
+- Security: JWT + Argon2, strict CORS, rate limiting on auth endpoints.
+- Performance: supports 1000 concurrent users with Redis-backed hot-path controls.
+- Reliability: retry-safe payment/dispute operations with idempotency keys.
+- Observability: structured logging + append-only audit logs.
+- Documentation: OpenAPI contract on /docs and architecture rationale in README.

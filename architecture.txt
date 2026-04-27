@@ -1,0 +1,173 @@
+# Purrfect - Architecture Document
+
+## 1) System Goal and Context
+Purrfect is a secure backend for cat marketplace transactions where fraud prevention is a first-class requirement. The platform focuses on safe handover and post-handover veterinary verification before final settlement.
+
+The system is designed to be production-ready, auditable, and scalable, not a tutorial CRUD service.
+
+## 2) Tech Stack (Chosen in Week 1)
+
+| Requirement | Selected Technology | Justification |
+|---|---|---|
+| Framework | Express.js (Node.js 20+) | Mature middleware ecosystem, strong I/O handling for API + Redis + DB workloads |
+| Async model | Node event loop + async/await | Efficient for high-concurrency network calls and short-lived API requests |
+| Database | PostgreSQL 15+ | ACID guarantees are mandatory for escrow and dispute-sensitive money operations |
+| ORM | Prisma ORM | Type-safe schema, migration safety, relational modeling with constraints |
+| Cache/Queue | Redis | Auth rate limiting, refresh token revocation metadata, locks, short-lived workflow state |
+| API Contract | OpenAPI 3.0 + swagger-ui-express | Contract-first delivery with /docs publishing requirement |
+| Security | JWT access/refresh + Argon2 + RBAC | Modern auth model with role isolation and strong password hashing |
+| Local Dev | Docker Compose | Required by assignment; reproducible local environment |
+| CI/CD | GitHub Actions (lint + test + build) | Automated quality gates and deployment readiness |
+
+## 3) Architecture Style
+Architecture pattern: Modular Monolith with clear domain boundaries.
+
+Why this structure:
+- lower operational complexity than microservices for a student team,
+- strong separation of concerns and testability,
+- easy future extraction of modules (Escrow, Moderation, Risk Engine) into separate services.
+
+## 4) High-Level Components
+- API Layer (`routes`, `controllers`): request routing, response shaping, status code mapping.
+- Application Layer (`services`): domain logic, orchestration, state transitions.
+- Persistence Layer (`repositories` + Prisma): DB reads/writes, transactions, index-aware query access.
+- Security Layer (`middleware`): auth, RBAC, rate limiting, request validation.
+- Worker Layer (`workers`): delayed/async tasks (inspection expiry, retry jobs, SLA checks).
+- Audit/Observability: append-only audit events, structured logs, traceable request IDs.
+
+## 5) Core Domain Modules
+1. Identity and Access:
+   - login, refresh, logout, role assignment, token revocation.
+2. Listings:
+   - listing lifecycle, metadata quality checks, media and proof attachments.
+3. Escrow:
+   - order funding, split settlements, locked funds, transactional ledger entries.
+4. Inspections:
+   - 72-hour veterinary check window tracking and report validation state.
+5. Disputes:
+   - evidence capture and deterministic moderation outcomes.
+6. Risk and Trust:
+   - rule-based risk scoring and policy enforcement.
+7. Audit:
+   - immutable event stream for compliance and repudiation defense.
+
+## 6) Critical Business Flow (50/50 Escrow)
+1. Buyer funds 100% of order to escrow.
+2. Buyer confirms cat handover.
+3. System pays first 50% milestone to seller (net of fee).
+4. 72-hour inspection timer starts.
+5. Buyer uploads vet report:
+   - pass: release remaining 50%.
+   - fail or suspicious: freeze second milestone and open dispute.
+6. Moderator decision finalizes refund/release.
+
+Design guarantee: all financial state transitions run in ACID transactions with idempotency keys.
+
+## 7) API Design Principles
+- OpenAPI-first design; every endpoint has request/response examples.
+- Resource grouping: `auth`, `users`, `listings`, `orders`, `escrow`, `inspections`, `disputes`, `moderation`, `admin`.
+- Error model standardization: 400/401/404/409/422/500 on all endpoints.
+- Pagination standard: cursor-based for all list endpoints using stable sort keys (`createdAt`, `id`).
+
+## 8) Security Architecture
+- JWT access token (short TTL) + refresh token (long TTL) with rotation.
+- Refresh token revocation metadata stored in Redis.
+- Passwords hashed with Argon2.
+- RBAC middleware for privileged modules.
+- Strict CORS allowlist by environment; wildcard origin is forbidden.
+- Rate limits:
+  - strict on `/auth/*`,
+  - moderate on public listing queries,
+  - protected actions additionally guarded by per-user limits.
+- Audit logs for critical actions (role changes, payouts, dispute outcomes).
+
+## 9) Scalability and Reliability Strategy
+- Horizontal API scaling through stateless service instances.
+- Connection pooling for PostgreSQL.
+- Redis-backed distributed locks for short critical sections.
+- Idempotent command handling for payouts/dispute settlement retries.
+- Worker retry policy with exponential backoff and dead-letter queue for failed jobs.
+- SLO-aware monitoring for latency and error budget.
+
+Target: stable service behavior at ~1000 concurrent users under mixed read/write workload.
+
+## 10) Folder Structure (Planned)
+```text
+purrfect-backend/
+├── src/
+│   ├── app.js
+│   ├── server.js
+│   ├── config/
+│   │   ├── env.js
+│   │   ├── logger.js
+│   │   ├── cors.js
+│   │   └── redis.js
+│   ├── middleware/
+│   │   ├── auth.js
+│   │   ├── authorize.js
+│   │   ├── rateLimit.js
+│   │   ├── validate.js
+│   │   └── errorHandler.js
+│   ├── routes/
+│   │   ├── auth.routes.js
+│   │   ├── users.routes.js
+│   │   ├── listings.routes.js
+│   │   ├── orders.routes.js
+│   │   ├── disputes.routes.js
+│   │   └── admin.routes.js
+│   ├── controllers/
+│   ├── services/
+│   ├── repositories/
+│   ├── workers/
+│   ├── docs/
+│   │   └── openapi.yaml
+│   └── core/
+│       ├── constants.js
+│       └── errors.js
+├── prisma/
+│   ├── schema.prisma
+│   └── migrations/
+├── tests/
+├── docker/
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── .env.example
+├── package.json
+├── README.md
+└── .github/workflows/ci.yml
+```
+
+## 11) Environment Strategy
+Environment files:
+- `.env` for local secrets (never committed),
+- `.env.test` for integration tests,
+- `.env.example` with documented placeholders only.
+
+Startup config validation (dotenv + zod/joi) is mandatory. App must fail fast if any required variable is missing or malformed.
+
+Required variables:
+- `NODE_ENV`, `PORT`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`
+- `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`
+- `ARGON2_MEMORY_COST`, `ARGON2_TIME_COST`
+- `CORS_ORIGINS`
+- `RATE_LIMIT_AUTH_PER_MIN`
+- `PLATFORM_FEE_BPS`
+
+## 12) DevOps and Delivery
+- Local development: Docker Compose with `api + postgres + redis`.
+- Production: containerized runtime via Dockerfile.
+- CI/CD: GitHub Actions pipeline:
+  1. install
+  2. lint
+  3. test
+  4. build
+- Merge to main is blocked unless pipeline is green.
+
+## 13) Architecture Decisions Summary
+- Prisma is used as the only ORM query path for business operations.
+- PostgreSQL transactions are mandatory for escrow and ledger consistency.
+- Redis is infrastructure support (not source of truth) for rate limits, token metadata, and locks.
+- Domain complexity is implemented through milestone settlement, risk engine, and moderated dispute model specific to pet marketplace fraud patterns.

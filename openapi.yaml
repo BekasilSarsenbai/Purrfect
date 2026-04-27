@@ -1,0 +1,1224 @@
+openapi: 3.0.3
+info:
+  title: Purrfect API
+  version: 1.0.0
+  description: >
+    Secure cat marketplace backend with escrow milestone settlement,
+    veterinary inspection window, and dispute moderation.
+servers:
+  - url: https://api.purrfect.kz
+    description: Production
+  - url: http://localhost:3000
+    description: Local
+tags:
+  - name: auth
+  - name: users
+  - name: listings
+  - name: orders
+  - name: inspections
+  - name: disputes
+  - name: moderation
+  - name: admin
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Login with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate refresh token and issue new access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+                  example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: Token rotated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout and revoke refresh token family
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken:
+                  type: string
+                  example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      responses:
+        '200':
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me:
+    get:
+      tags: [users]
+      summary: Get current user profile
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings:
+    get:
+      tags: [listings]
+      summary: List published listings (cursor pagination)
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [PUBLISHED, RESERVED, SOLD]
+          example: PUBLISHED
+        - in: query
+          name: breed
+          schema:
+            type: string
+          example: Maine Coon
+        - in: query
+          name: city
+          schema:
+            type: string
+          example: Almaty
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [-createdAt, -priceKzt, riskScore]
+          example: -createdAt
+      responses:
+        '200':
+          description: Listing page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedListings'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [listings]
+      summary: Create listing draft
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateListingRequest'
+      responses:
+        '201':
+          description: Draft created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listingId}:
+    get:
+      tags: [listings]
+      summary: Get listing details
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200':
+          description: Listing detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [listings]
+      summary: Update listing draft or pending listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateListingRequest'
+      responses:
+        '200':
+          description: Listing updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [listings]
+      summary: Archive listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200':
+          description: Listing archived
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ARCHIVED
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listingId}/submit-review:
+    post:
+      tags: [listings]
+      summary: Submit listing for moderation review
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200':
+          description: Listing moved to pending review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders:
+    post:
+      tags: [orders]
+      summary: Create order and fund escrow (100%)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order funded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [orders]
+      summary: List my orders (cursor pagination)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [CREATED, FUNDED_100, HANDOVER_CONFIRMED, INSPECTION_ACTIVE, DISPUTED, COMPLETED, CANCELLED]
+          example: INSPECTION_ACTIVE
+      responses:
+        '200':
+          description: Orders page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedOrders'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{orderId}/handover-confirm:
+    post:
+      tags: [orders]
+      summary: Confirm handover and release payout milestone 1
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdParam'
+      responses:
+        '200':
+          description: Handover confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{orderId}:
+    get:
+      tags: [orders]
+      summary: Get order detail
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdParam'
+      responses:
+        '200':
+          description: Order detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{orderId}/cancel:
+    post:
+      tags: [orders]
+      summary: Cancel order before handover
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdParam'
+      responses:
+        '200':
+          description: Order cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{orderId}/inspection:
+    post:
+      tags: [inspections]
+      summary: Submit veterinary report during 72-hour window
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InspectionSubmitRequest'
+      responses:
+        '200':
+          description: Inspection submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inspection'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [inspections]
+      summary: Get inspection details for an order
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdParam'
+      responses:
+        '200':
+          description: Inspection detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Inspection'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{orderId}/inspection/approve:
+    post:
+      tags: [inspections]
+      summary: Buyer approves inspection and releases final payout milestone
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdParam'
+      responses:
+        '200':
+          description: Final payout released and order completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /disputes:
+    post:
+      tags: [disputes]
+      summary: Open dispute for an order
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDisputeRequest'
+      responses:
+        '201':
+          description: Dispute created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispute'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [disputes]
+      summary: List disputes (role-aware)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [OPEN, UNDER_REVIEW, RESOLVED_REFUND_FULL, RESOLVED_REFUND_PARTIAL, RESOLVED_RELEASE_SELLER, REJECTED]
+      responses:
+        '200':
+          description: Dispute page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDisputes'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /disputes/{disputeId}:
+    get:
+      tags: [disputes]
+      summary: Get dispute detail
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DisputeIdParam'
+      responses:
+        '200':
+          description: Dispute detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispute'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /disputes/{disputeId}/evidence:
+    post:
+      tags: [disputes]
+      summary: Upload dispute evidence
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DisputeIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddDisputeEvidenceRequest'
+      responses:
+        '201':
+          description: Evidence added
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisputeEvidence'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [disputes]
+      summary: List dispute evidence
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DisputeIdParam'
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Evidence page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDisputeEvidence'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/disputes:
+    get:
+      tags: [moderation]
+      summary: List moderation dispute queue
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [OPEN, UNDER_REVIEW]
+          example: OPEN
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: [-openedAt, priority]
+          example: -openedAt
+      responses:
+        '200':
+          description: Moderation queue page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDisputes'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/disputes/{disputeId}/resolve:
+    post:
+      tags: [moderation]
+      summary: Resolve dispute as moderator
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: disputeId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveDisputeRequest'
+      responses:
+        '200':
+          description: Dispute resolved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dispute'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/users/{userId}/role:
+    patch:
+      tags: [admin]
+      summary: Update user role as admin
+      description: Assigns a new RBAC role to a platform user. Requires ADMIN role.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/UserIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserRoleRequest'
+      responses:
+        '200':
+          description: User role updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    CursorParam:
+      in: query
+      name: cursor
+      required: false
+      schema:
+        type: string
+      description: Opaque keyset cursor from previous page
+      example: eyJjcmVhdGVkQXQiOiIyMDI2LTA0LTA3VDEzOjQyOjAwWiIsImlkIjoiY2YxMiJ9
+    LimitParam:
+      in: query
+      name: limit
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    ListingIdParam:
+      in: path
+      name: listingId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    OrderIdParam:
+      in: path
+      name: orderId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DisputeIdParam:
+      in: path
+      name: disputeId
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UserIdParam:
+      in: path
+      name: userId
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: BAD_REQUEST
+            message: Invalid query parameter value
+    Unauthorized:
+      description: Authentication failed or token missing
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: UNAUTHORIZED
+            message: Access token is invalid or expired
+    Forbidden:
+      description: Authenticated but missing required role/permission
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: FORBIDDEN
+            message: Admin role is required
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: NOT_FOUND
+            message: Listing not found
+    Conflict:
+      description: Business state conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: CONFLICT
+            message: Order is already in disputed state
+    UnprocessableEntity:
+      description: Validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: VALIDATION_ERROR
+            message: inspection report URL is required
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: INTERNAL_ERROR
+            message: Unexpected server error
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          nullable: true
+
+    RegisterRequest:
+      type: object
+      required: [email, password, displayName, role]
+      properties:
+        email:
+          type: string
+          format: email
+          example: buyer01@purrfect.kz
+        password:
+          type: string
+          minLength: 8
+          example: Str0ngPass!23
+        displayName:
+          type: string
+          example: Aigerim K.
+        role:
+          type: string
+          enum: [BUYER, SELLER]
+          example: BUYER
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: seller01@purrfect.kz
+        password:
+          type: string
+          example: StrongSellerPass123
+
+    UpdateUserRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [BUYER, SELLER, MODERATOR, ADMIN]
+          example: MODERATOR
+        reason:
+          type: string
+          nullable: true
+          example: Escalated user to moderation team for on-call rotation.
+
+    AuthResponse:
+      type: object
+      required: [accessToken, refreshToken, user]
+      properties:
+        accessToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.access.payload
+        refreshToken:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.refresh.payload
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [BUYER, SELLER, MODERATOR, ADMIN]
+        displayName:
+          type: string
+        trustScore:
+          type: integer
+          example: 76
+
+    CreateListingRequest:
+      type: object
+      required: [title, description, breed, gender, birthDate, vaccinationStatus, priceKzt, city]
+      properties:
+        title:
+          type: string
+          example: Scottish Fold kitten, vaccinated
+        description:
+          type: string
+          example: Playful kitten with health passport and first vaccine.
+        breed:
+          type: string
+          example: Scottish Fold
+        gender:
+          type: string
+          enum: [MALE, FEMALE]
+          example: FEMALE
+        birthDate:
+          type: string
+          format: date
+          example: '2026-01-12'
+        vaccinationStatus:
+          type: string
+          example: 1st dose completed
+        priceKzt:
+          type: number
+          format: double
+          example: 250000
+        city:
+          type: string
+          example: Astana
+
+    UpdateListingRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          example: British Shorthair kitten with passport
+        description:
+          type: string
+          example: Updated health notes and photo set.
+        vaccinationStatus:
+          type: string
+          example: 2nd dose completed
+        priceKzt:
+          type: number
+          format: double
+          example: 280000
+        city:
+          type: string
+          example: Almaty
+
+    Listing:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sellerId:
+          type: string
+          format: uuid
+        title:
+          type: string
+        breed:
+          type: string
+        priceKzt:
+          type: number
+          format: double
+        city:
+          type: string
+        status:
+          type: string
+          enum: [DRAFT, PENDING_REVIEW, PUBLISHED, RESERVED, SOLD, REJECTED, ARCHIVED]
+        riskScore:
+          type: integer
+          example: 34
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateOrderRequest:
+      type: object
+      required: [listingId]
+      properties:
+        listingId:
+          type: string
+          format: uuid
+          example: b8f198e7-ea6b-4d4a-a5bc-faf9d32d6ca7
+        idempotencyKey:
+          type: string
+          example: ord_01J9J4XX45QCNH7Y
+
+    Order:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        listingId:
+          type: string
+          format: uuid
+        buyerId:
+          type: string
+          format: uuid
+        sellerId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [CREATED, FUNDED_100, HANDOVER_CONFIRMED, INSPECTION_ACTIVE, DISPUTED, COMPLETED, CANCELLED]
+        totalAmountKzt:
+          type: number
+          format: double
+          example: 250000
+        payout1Kzt:
+          type: number
+          format: double
+          example: 118750
+        payout2Kzt:
+          type: number
+          format: double
+          example: 118750
+        inspectionDeadline:
+          type: string
+          format: date-time
+
+    InspectionSubmitRequest:
+      type: object
+      required: [clinicName, reportUrl, outcome]
+      properties:
+        clinicName:
+          type: string
+          example: Almaty Vet Care
+        reportUrl:
+          type: string
+          format: uri
+          example: https://files.purrfect.kz/reports/rep_123.pdf
+        outcome:
+          type: string
+          enum: [PASSED, FAILED]
+          example: PASSED
+        notes:
+          type: string
+          example: General health normal, no critical findings.
+
+    Inspection:
+      type: object
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [PENDING, PASSED, FAILED, EXPIRED]
+        deadlineAt:
+          type: string
+          format: date-time
+        submittedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateDisputeRequest:
+      type: object
+      required: [orderId, reasonCode]
+      properties:
+        orderId:
+          type: string
+          format: uuid
+        reasonCode:
+          type: string
+          enum: [HEALTH_MISMATCH, FAKE_BREED_DOCS, NOT_AS_DESCRIBED, OTHER]
+          example: HEALTH_MISMATCH
+        evidenceUrls:
+          type: array
+          items:
+            type: string
+            format: uri
+          example:
+            - https://files.purrfect.kz/evidence/photo1.jpg
+            - https://files.purrfect.kz/evidence/vet-note.pdf
+        description:
+          type: string
+          example: Vet found congenital issue not disclosed in listing.
+
+    ResolveDisputeRequest:
+      type: object
+      required: [resolution]
+      properties:
+        resolution:
+          type: string
+          enum: [REFUND_FULL, REFUND_PARTIAL, RELEASE_SELLER]
+        refundAmountKzt:
+          type: number
+          format: double
+          nullable: true
+          example: 50000
+        note:
+          type: string
+          example: Partial refund approved based on medical evidence.
+
+    Dispute:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        orderId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [OPEN, UNDER_REVIEW, RESOLVED_REFUND_FULL, RESOLVED_REFUND_PARTIAL, RESOLVED_RELEASE_SELLER, REJECTED]
+        reasonCode:
+          type: string
+        openedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    AddDisputeEvidenceRequest:
+      type: object
+      required: [evidenceType, fileUrl]
+      properties:
+        evidenceType:
+          type: string
+          enum: [PHOTO, VIDEO, PDF_REPORT, CHAT_SCREENSHOT, OTHER]
+          example: PDF_REPORT
+        fileUrl:
+          type: string
+          format: uri
+          example: https://files.purrfect.kz/evidence/report_224.pdf
+        note:
+          type: string
+          example: Vet report confirming congenital heart issue.
+
+    DisputeEvidence:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        disputeId:
+          type: string
+          format: uuid
+        uploaderId:
+          type: string
+          format: uuid
+        evidenceType:
+          type: string
+          enum: [PHOTO, VIDEO, PDF_REPORT, CHAT_SCREENSHOT, OTHER]
+        fileUrl:
+          type: string
+          format: uri
+        note:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    PageMeta:
+      type: object
+      required: [hasNext, nextCursor]
+      properties:
+        hasNext:
+          type: boolean
+        nextCursor:
+          type: string
+          nullable: true
+
+    PaginatedListings:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Listing'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    PaginatedOrders:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    PaginatedDisputes:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Dispute'
+        meta:
+          $ref: '#/components/schemas/PageMeta'
+
+    PaginatedDisputeEvidence:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DisputeEvidence'
+        meta:
+          $ref: '#/components/schemas/PageMeta'

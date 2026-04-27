@@ -1,0 +1,154 @@
+# Purrfect - Security Analysis
+
+## 1) Security Objectives
+- Protect buyers from fraud and unauthorized fund movement.
+- Protect sellers from false claims and account abuse.
+- Ensure tamper-evident auditability for financial/moderation actions.
+- Minimize credential and secret exposure risk.
+
+## 2) STRIDE Threat Model
+
+### S - Spoofing
+Threats:
+- attacker forges JWT access token,
+- stolen refresh token reused across sessions.
+
+Controls:
+- signed JWT with strong secret and short access token TTL,
+- refresh token rotation on every refresh request,
+- store hashed refresh tokens + family IDs for replay detection,
+- Redis-backed revocation list for immediate invalidation.
+
+Secret rotation plan:
+- keep active and next JWT secrets during rotation window,
+- tokens signed by previous secret accepted only until grace period expires,
+- force refresh on rotation event for elevated-risk accounts.
+
+### T - Tampering
+Threats:
+- parameter manipulation and malformed request payloads,
+- SQL injection attempts via search/filter fields,
+- dispute evidence metadata tampering.
+
+Controls:
+- request schema validation at API boundary (strict typing),
+- Prisma prepared statements and typed query API (no concatenated SQL in business logic),
+- immutable checksums for uploaded documents/evidence metadata,
+- optimistic/concurrency guards on order state transitions.
+
+### R - Repudiation
+Threats:
+- user denies creating listing, opening dispute, or approving payout.
+
+Controls:
+- append-only `audit_logs` table:
+  - actor_user_id,
+  - action,
+  - entity_type/entity_id,
+  - before/after snapshots,
+  - ip/user-agent,
+  - timestamp.
+- critical endpoints require authenticated identity and request correlation IDs.
+
+### I - Information Disclosure
+Threats:
+- leaked personal data, leaked token secrets, internal error leakage.
+
+Controls:
+- least-privilege data exposure in DTO responses,
+- no secret values in logs; redact sensitive fields,
+- centralized error handler hides internal stack traces in production,
+- strict CORS allowlist; no wildcard origins.
+
+### D - Denial of Service
+Threats:
+- brute-force login attempts,
+- token refresh abuse,
+- listing scraping bursts.
+
+Controls:
+- Redis token-bucket rate limits:
+  - `/auth/login`: strict (example 5/min/IP + account lock strategy),
+  - `/auth/register`: strict with cooldown,
+  - `/auth/refresh`: strict per token family,
+  - public listing reads: moderate burst limits.
+- request size limits and timeout budgets.
+- queue backpressure and retry caps for workers.
+
+### E - Elevation of Privilege
+Threats:
+- buyer accessing moderator/admin endpoints,
+- seller modifying dispute resolution.
+
+Controls:
+- RBAC middleware with explicit role matrix:
+  - Buyer: own orders/disputes only,
+  - Seller: own listings/orders only,
+  - Moderator: review/resolve only,
+  - Admin: policy and role management.
+- ownership checks at service layer even after role check.
+- deny-by-default route policy for new endpoints.
+
+## 3) Authentication and Session Security
+- Access token TTL: short-lived (example 15 minutes).
+- Refresh token TTL: longer-lived (example 7-30 days) with rotation.
+- On refresh:
+  1. verify token hash and family,
+  2. revoke previous token,
+  3. issue new token pair,
+  4. log audit event.
+- Reuse detection invalidates full token family.
+
+## 4) Authorization Design (RBAC)
+- Route-level role gate + resource ownership guard.
+- Critical actions require stronger guard rails:
+  - payout release only from trusted service path,
+  - dispute resolution only by moderator/admin,
+  - role assignment only by admin.
+- Authorization events are audited.
+
+## 5) Financial Integrity and ACID Guarantees
+- Escrow and payout operations execute in PostgreSQL transactions.
+- Double-write prevention via idempotency keys.
+- Funds cannot move on partial failure:
+  - either all ledger rows + order status commit,
+  - or full rollback.
+- Dispute opening freezes final payout atomically.
+
+## 6) Secret Management Strategy
+- No hardcoded secrets in code or repo.
+- Secrets loaded from environment and validated at startup.
+- Required: database URL, Redis URL, JWT secrets, hash parameters, CORS origins.
+- Production secrets managed by platform secret manager (not `.env` in git).
+- Immediate startup failure on missing/invalid secret config.
+
+## 7) API Security Baseline
+- HTTPS-only in production.
+- Helmet-like security headers.
+- CORS allowlist by environment.
+- Input validation and output sanitization.
+- File upload constraints:
+  - allowed MIME types,
+  - max size,
+  - malware scanning hook (phase 2),
+  - checksum generation.
+
+## 8) Logging, Monitoring, and Incident Response
+- Structured logs for auth failures, rate-limit hits, payout attempts, dispute outcomes.
+- Security alerts:
+  - repeated failed logins,
+  - impossible travel/session anomalies,
+  - spike in high-risk listings.
+- Incident response:
+  1. isolate account/session,
+  2. revoke token families,
+  3. freeze suspicious payouts,
+  4. preserve forensic logs.
+
+## 9) Residual Risks and Mitigations
+- Social engineering and off-platform payments:
+  - mitigation: policy messaging + no-protection warning.
+- Fake external vet reports:
+  - mitigation: trusted clinic registry and verification workflow.
+- Abuse at scale:
+  - mitigation: adaptive rate limiting and trust-score-based controls.

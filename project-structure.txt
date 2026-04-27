@@ -1,0 +1,71 @@
+purrfect-backend/
+├── src/                                  # Application source code root
+│   ├── app.js                            # Express app setup (middlewares, routes)
+│   ├── server.js                         # HTTP bootstrap and graceful shutdown
+│   ├── config/                           # Environment, logger, CORS, Redis clients
+│   │   ├── env.js                        # dotenv + schema validation (zod/joi)
+│   │   ├── logger.js                     # Structured logging configuration
+│   │   ├── cors.js                       # Strict CORS origin policy
+│   │   └── redis.js                      # Redis connection singleton
+│   ├── core/                             # Shared constants and app-level error classes
+│   │   ├── constants.js                  # Domain constants and enums mirror
+│   │   └── errors.js                     # Unified custom error hierarchy
+│   ├── middleware/                       # Cross-cutting request processing middlewares
+│   │   ├── auth.js                       # Access JWT verification
+│   │   ├── authorize.js                  # RBAC role checks
+│   │   ├── rateLimit.js                  # Redis token-bucket limiters
+│   │   ├── validate.js                   # Request schema validation
+│   │   └── errorHandler.js               # Centralized error response mapping
+│   ├── routes/                           # Route definitions by resource
+│   │   ├── auth.routes.js                # Register/login/refresh/logout endpoints
+│   │   ├── users.routes.js               # Profile and account endpoints
+│   │   ├── listings.routes.js            # Listing CRUD and publication endpoints
+│   │   ├── orders.routes.js              # Escrow order and handover endpoints
+│   │   ├── inspections.routes.js         # Vet inspection submission endpoints
+│   │   ├── disputes.routes.js            # Dispute creation and tracking endpoints
+│   │   └── moderation.routes.js          # Moderator actions and resolutions
+│   ├── controllers/                      # HTTP handler functions per module
+│   │   ├── auth.controller.js            # Register/login/refresh handlers
+│   │   ├── users.controller.js           # Profile and account handlers
+│   │   ├── listings.controller.js        # Listing CRUD and publication handlers
+│   │   ├── orders.controller.js          # Escrow order/handover handlers
+│   │   ├── inspections.controller.js     # Vet inspection submission handlers
+│   │   ├── disputes.controller.js        # Dispute creation/tracking handlers
+│   │   └── moderation.controller.js      # Moderator resolution handlers
+│   ├── services/                         # Business logic and domain workflows
+│   │   ├── auth.service.js               # Token lifecycle and auth logic
+│   │   ├── listing.service.js            # Listing lifecycle and policy checks
+│   │   ├── order.service.js              # Order state transitions
+│   │   ├── escrow.service.js             # 50/50 payout and transaction flow
+│   │   ├── inspection.service.js         # 72h inspection window logic
+│   │   ├── dispute.service.js            # Dispute decision workflow
+│   │   └── riskEngine.service.js         # Fraud scoring and trust updates
+│   ├── repositories/                     # Prisma data access wrappers
+│   │   ├── user.repository.js            # User and session queries
+│   │   ├── listing.repository.js         # Listing persistence queries
+│   │   ├── order.repository.js           # Order and status persistence
+│   │   ├── escrow.repository.js          # Financial transaction persistence
+│   │   ├── dispute.repository.js         # Dispute and evidence queries
+│   │   └── audit.repository.js           # Append-only audit writes
+│   ├── workers/                          # Background jobs and delayed tasks
+│   │   ├── inspectionExpiry.worker.js    # Expire 72h inspections and apply policy
+│   │   ├── payoutRetry.worker.js         # Retry failed payout/disbursement jobs
+│   │   └── moderationSla.worker.js       # Escalate stale moderation cases
+│   └── docs/                             # API contract documentation assets
+│       └── openapi.yaml                  # OpenAPI source rendered at /docs
+├── prisma/                               # Prisma schema and migration history
+│   ├── schema.prisma                     # Database schema source of truth
+│   └── migrations/                       # Versioned Prisma migration files
+├── tests/                                # Unit, integration, and e2e test suites
+│   ├── unit/                             # Isolated module/service tests
+│   ├── integration/                      # DB/API integration tests
+│   └── e2e/                              # End-to-end critical workflow tests
+├── docker/                               # Container definitions for local/prod
+│   ├── Dockerfile                        # Production image build recipe
+│   └── docker-compose.yml                # Local stack (api + postgres + redis)
+├── .github/                              # CI/CD automation workflows
+│   └── workflows/
+│       └── ci.yml                        # Lint + test + build pipeline
+├── .env.example                          # Safe example environment variables
+├── package.json                          # Dependency and script manifest
+└── README.md                             # Setup instructions and architecture decisions

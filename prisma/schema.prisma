@@ -1,0 +1,333 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  BUYER
+  SELLER
+  MODERATOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  RESERVED
+  SOLD
+  REJECTED
+  ARCHIVED
+}
+
+enum OrderStatus {
+  CREATED
+  FUNDED_100
+  HANDOVER_CONFIRMED
+  INSPECTION_ACTIVE
+  DISPUTED
+  COMPLETED
+  CANCELLED
+}
+
+enum InspectionStatus {
+  PENDING
+  PASSED
+  FAILED
+  EXPIRED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED_REFUND_FULL
+  RESOLVED_REFUND_PARTIAL
+  RESOLVED_RELEASE_SELLER
+  REJECTED
+}
+
+enum TxType {
+  ESCROW_HOLD
+  PAYOUT_MILESTONE_1
+  PAYOUT_MILESTONE_2
+  REFUND_FULL
+  REFUND_PARTIAL
+  PLATFORM_FEE
+  ADJUSTMENT
+}
+
+enum VerificationDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id              String          @id @default(uuid())
+  email           String          @unique
+  phone           String?         @unique
+  passwordHash    String
+  role            UserRole
+  status          UserStatus      @default(ACTIVE)
+  displayName     String
+  trustScore      Int             @default(50)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  listings        Listing[]
+  buyOrders       Order[]         @relation("BuyerOrders")
+  refreshTokens   RefreshToken[]
+  documentVerifications DocumentVerification[] @relation("ModeratorDocumentVerifications")
+  moderationCases ModerationCase[] @relation("ModeratorCases")
+  disputesOpened  Dispute[]       @relation("OpenedByUser")
+  auditLogs       AuditLog[]
+  notifications   Notification[]
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  familyId  String
+  revokedAt DateTime?
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([familyId])
+}
+
+model Listing {
+  id                String         @id @default(uuid())
+  sellerId          String
+  title             String
+  description       String
+  breed             String
+  gender            String
+  birthDate         DateTime
+  vaccinationStatus String
+  healthNotes       String?
+  priceKzt          Decimal        @db.Decimal(12, 2)
+  city              String
+  status            ListingStatus  @default(DRAFT)
+  riskScore         Int            @default(0)
+  publishedAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  seller            User           @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  media             ListingMedia[]
+  documents         ListingDocument[]
+  orders            Order[]
+  moderationCases   ModerationCase[]
+
+  @@index([sellerId, status, createdAt])
+  @@index([status, city, priceKzt, createdAt])
+  @@index([breed, status, createdAt])
+}
+
+model ListingMedia {
+  id             String   @id @default(uuid())
+  listingId      String
+  mediaType      String
+  storageUrl     String
+  checksumSha256 String
+  createdAt      DateTime @default(now())
+  listing        Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, createdAt])
+}
+
+model ListingDocument {
+  id             String                 @id @default(uuid())
+  listingId      String
+  docType        String
+  storageUrl     String
+  checksumSha256 String
+  createdAt      DateTime               @default(now())
+  listing        Listing                @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  verifications  DocumentVerification[]
+
+  @@index([listingId, docType, createdAt])
+}
+
+model DocumentVerification {
+  id          String               @id @default(uuid())
+  documentId  String
+  moderatorId String
+  decision    VerificationDecision @default(PENDING)
+  note        String?
+  createdAt   DateTime             @default(now())
+  document    ListingDocument      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  moderator   User                 @relation("ModeratorDocumentVerifications", fields: [moderatorId], references: [id], onDelete: Restrict)
+
+  @@index([documentId, createdAt])
+  @@index([moderatorId, createdAt])
+}
+
+model Order {
+  id                 String             @id @default(uuid())
+  listingId          String
+  buyerId            String
+  sellerId           String
+  status             OrderStatus        @default(CREATED)
+  totalAmountKzt     Decimal            @db.Decimal(12, 2)
+  platformFeeKzt     Decimal            @db.Decimal(12, 2)
+  payout1Kzt         Decimal            @db.Decimal(12, 2)
+  payout2Kzt         Decimal            @db.Decimal(12, 2)
+  fundedAt           DateTime?
+  handoverAt         DateTime?
+  inspectionDeadline DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  listing            Listing            @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  buyer              User               @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+  escrowTx           EscrowTransaction[]
+  payouts            Payout[]
+  inspection         Inspection?
+  dispute            Dispute?
+
+  @@index([listingId])
+  @@index([buyerId, status, createdAt])
+  @@index([sellerId, status, createdAt])
+  @@index([status, createdAt, id])
+}
+
+model EscrowTransaction {
+  id             String   @id @default(uuid())
+  orderId        String
+  txType         TxType
+  amountKzt      Decimal  @db.Decimal(12, 2)
+  idempotencyKey String   @unique
+  metadataJson   Json?
+  createdAt      DateTime @default(now())
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+  @@index([txType, createdAt])
+}
+
+model Payout {
+  id         String   @id @default(uuid())
+  orderId    String
+  milestone  Int
+  amountKzt  Decimal  @db.Decimal(12, 2)
+  releasedAt DateTime?
+  status     String
+  createdAt  DateTime @default(now())
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, milestone])
+  @@index([orderId, status])
+}
+
+model Inspection {
+  id          String           @id @default(uuid())
+  orderId     String           @unique
+  buyerId     String
+  status      InspectionStatus @default(PENDING)
+  clinicName  String?
+  reportUrl   String?
+  notes       String?
+  submittedAt DateTime?
+  deadlineAt  DateTime
+  createdAt   DateTime         @default(now())
+  order       Order            @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([buyerId, status, deadlineAt])
+  @@index([status, deadlineAt])
+}
+
+model Dispute {
+  id                String          @id @default(uuid())
+  orderId           String          @unique
+  openedById        String
+  status            DisputeStatus   @default(OPEN)
+  reasonCode        String
+  moderatorDecision String?
+  resolutionNote    String?
+  openedAt          DateTime        @default(now())
+  resolvedAt        DateTime?
+  order             Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  openedBy          User            @relation("OpenedByUser", fields: [openedById], references: [id], onDelete: Restrict)
+  evidence          DisputeEvidence[]
+
+  @@index([status, openedAt])
+  @@index([openedById, openedAt])
+}
+
+model DisputeEvidence {
+  id           String   @id @default(uuid())
+  disputeId    String
+  uploaderId   String
+  evidenceType String
+  storageUrl   String
+  note         String?
+  createdAt    DateTime @default(now())
+  dispute      Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId, createdAt])
+}
+
+model ModerationCase {
+  id           String   @id @default(uuid())
+  listingId    String?
+  orderId      String?
+  moderatorId  String?
+  caseType     String
+  status       String
+  riskSnapshot Json?
+  decision     String?
+  decisionNote String?
+  createdAt    DateTime @default(now())
+  closedAt     DateTime?
+  listing      Listing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  moderator    User?    @relation("ModeratorCases", fields: [moderatorId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([caseType, status])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorUserId String?
+  action     String
+  entityType String
+  entityId   String
+  beforeJson Json?
+  afterJson  Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  actor      User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+}
+
+model Notification {
+  id           String   @id @default(uuid())
+  userId       String
+  channel      String
+  templateCode String
+  payloadJson  Json
+  status       String
+  retryCount   Int      @default(0)
+  nextRetryAt  DateTime?
+  createdAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, nextRetryAt])
+}

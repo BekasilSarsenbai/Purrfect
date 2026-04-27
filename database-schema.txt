@@ -1,0 +1,470 @@
+# Purrfect - Database Schema Document
+
+## 1) Database Design Goals
+- Preserve financial correctness for escrow and split payouts.
+- Enforce listing integrity and anti-fraud constraints.
+- Support dispute evidence workflows and moderator decisions.
+- Keep relational data strongly typed through Prisma models.
+
+Database engine: PostgreSQL 15+  
+ORM: Prisma ORM (no raw SQL in application business operations).
+
+## 2) ERD (ASCII)
+```text
+users (1) --------< listings (N) --------< listing_media (N)
+  |  \               |
+  |   \              \------< listing_documents (N) >------ document_verifications (N)
+  |    \
+  |     \------< refresh_tokens (N)
+  |
+  \------< orders (as buyer) >------ listings (as item)
+                     |
+                     \------< escrow_transactions (N)
+                     |
+                     \------< inspections (0..1)
+                     |
+                     \------< disputes (0..1) ------< dispute_evidence (N)
+                     |
+                     \------< payouts (N)
+
+users (1) --------< moderation_cases (N)
+users (1) --------< audit_logs (N)
+users (1) --------< notifications (N)
+```
+
+## 3) Primary Tables and Relationships
+- `users`: root identity table.
+- `refresh_tokens`: session/token rotation support; many tokens per user.
+- `listings`: seller-owned cat offers with lifecycle statuses.
+- `listing_media`: photos/videos per listing.
+- `listing_documents`: uploaded pedigree/vaccine docs.
+- `document_verifications`: moderator decisions for uploaded docs.
+- `orders`: buyer-seller deal linked to one listing.
+- `escrow_transactions`: atomic money movements tied to order.
+- `payouts`: milestone settlement records.
+- `inspections`: veterinary check results with 72-hour deadline.
+- `disputes`: dispute case per order (max one active).
+- `dispute_evidence`: file/text evidence for dispute case.
+- `moderation_cases`: moderation queue and outcomes.
+- `audit_logs`: append-only security/financial audit records.
+- `notifications`: user communication events.
+
+## 4) Prisma Schema (Complete)
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  BUYER
+  SELLER
+  MODERATOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  RESERVED
+  SOLD
+  REJECTED
+  ARCHIVED
+}
+
+enum OrderStatus {
+  CREATED
+  FUNDED_100
+  HANDOVER_CONFIRMED
+  INSPECTION_ACTIVE
+  DISPUTED
+  COMPLETED
+  CANCELLED
+}
+
+enum InspectionStatus {
+  PENDING
+  PASSED
+  FAILED
+  EXPIRED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED_REFUND_FULL
+  RESOLVED_REFUND_PARTIAL
+  RESOLVED_RELEASE_SELLER
+  REJECTED
+}
+
+enum TxType {
+  ESCROW_HOLD
+  PAYOUT_MILESTONE_1
+  PAYOUT_MILESTONE_2
+  REFUND_FULL
+  REFUND_PARTIAL
+  PLATFORM_FEE
+  ADJUSTMENT
+}
+
+enum VerificationDecision {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                 String             @id @default(uuid())
+  email              String             @unique
+  phone              String?            @unique
+  passwordHash       String
+  role               UserRole
+  status             UserStatus         @default(ACTIVE)
+  displayName        String
+  trustScore         Int                @default(50)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  listings           Listing[]
+  buyOrders          Order[]            @relation("BuyerOrders")
+  refreshTokens      RefreshToken[]
+  moderationCases    ModerationCase[]   @relation("ModeratorCases")
+  disputesOpened     Dispute[]          @relation("OpenedByUser")
+  auditLogs          AuditLog[]
+  notifications      Notification[]
+}
+
+model RefreshToken {
+  id                 String    @id @default(uuid())
+  userId             String
+  tokenHash          String    @unique
+  familyId           String
+  revokedAt          DateTime?
+  expiresAt          DateTime
+  createdAt          DateTime  @default(now())
+
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([familyId])
+}
+
+model Listing {
+  id                 String            @id @default(uuid())
+  sellerId           String
+  title              String
+  description        String
+  breed              String
+  gender             String
+  birthDate          DateTime
+  vaccinationStatus  String
+  healthNotes        String?
+  priceKzt           Decimal           @db.Decimal(12, 2)
+  city               String
+  status             ListingStatus     @default(DRAFT)
+  riskScore          Int               @default(0)
+  publishedAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  seller             User              @relation(fields: [sellerId], references: [id], onDelete: Restrict)
+  media              ListingMedia[]
+  documents          ListingDocument[]
+  orders             Order[]
+  moderationCases    ModerationCase[]
+
+  @@index([sellerId, status, createdAt])
+  @@index([status, city, priceKzt, createdAt])
+  @@index([breed, status, createdAt])
+}
+
+model ListingMedia {
+  id                 String    @id @default(uuid())
+  listingId          String
+  mediaType          String
+  storageUrl         String
+  checksumSha256     String
+  createdAt          DateTime  @default(now())
+
+  listing            Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, createdAt])
+}
+
+model ListingDocument {
+  id                 String                  @id @default(uuid())
+  listingId          String
+  docType            String
+  storageUrl         String
+  checksumSha256     String
+  createdAt          DateTime                @default(now())
+
+  listing            Listing                 @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  verifications      DocumentVerification[]
+
+  @@index([listingId, docType, createdAt])
+}
+
+model DocumentVerification {
+  id                 String                @id @default(uuid())
+  documentId         String
+  moderatorId        String
+  decision           VerificationDecision  @default(PENDING)
+  note               String?
+  createdAt          DateTime              @default(now())
+
+  document           ListingDocument       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  moderator          User                  @relation(fields: [moderatorId], references: [id], onDelete: Restrict)
+
+  @@index([documentId, createdAt])
+  @@index([moderatorId, createdAt])
+}
+
+model Order {
+  id                 String            @id @default(uuid())
+  listingId          String
+  buyerId            String
+  sellerId           String
+  status             OrderStatus       @default(CREATED)
+  totalAmountKzt     Decimal           @db.Decimal(12, 2)
+  platformFeeKzt     Decimal           @db.Decimal(12, 2)
+  payout1Kzt         Decimal           @db.Decimal(12, 2)
+  payout2Kzt         Decimal           @db.Decimal(12, 2)
+  fundedAt           DateTime?
+  handoverAt         DateTime?
+  inspectionDeadline DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  listing            Listing           @relation(fields: [listingId], references: [id], onDelete: Restrict)
+  buyer              User              @relation("BuyerOrders", fields: [buyerId], references: [id], onDelete: Restrict)
+  escrowTx           EscrowTransaction[]
+  payouts            Payout[]
+  inspection         Inspection?
+  dispute            Dispute?
+
+  @@index([listingId])
+  @@index([buyerId, status, createdAt])
+  @@index([sellerId, status, createdAt])
+  @@index([status, createdAt, id])
+}
+
+model EscrowTransaction {
+  id                 String    @id @default(uuid())
+  orderId            String
+  txType             TxType
+  amountKzt          Decimal   @db.Decimal(12, 2)
+  idempotencyKey     String    @unique
+  metadataJson       Json?
+  createdAt          DateTime  @default(now())
+
+  order              Order     @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, createdAt])
+  @@index([txType, createdAt])
+}
+
+model Payout {
+  id                 String    @id @default(uuid())
+  orderId            String
+  milestone          Int
+  amountKzt          Decimal   @db.Decimal(12, 2)
+  releasedAt         DateTime?
+  status             String
+  createdAt          DateTime  @default(now())
+
+  order              Order     @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@unique([orderId, milestone])
+  @@index([orderId, status])
+}
+
+model Inspection {
+  id                 String            @id @default(uuid())
+  orderId            String            @unique
+  buyerId            String
+  status             InspectionStatus  @default(PENDING)
+  clinicName         String?
+  reportUrl          String?
+  notes              String?
+  submittedAt        DateTime?
+  deadlineAt         DateTime
+  createdAt          DateTime          @default(now())
+
+  order              Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([buyerId, status, deadlineAt])
+  @@index([status, deadlineAt])
+}
+
+model Dispute {
+  id                 String          @id @default(uuid())
+  orderId            String          @unique
+  openedById         String
+  status             DisputeStatus   @default(OPEN)
+  reasonCode         String
+  moderatorDecision  String?
+  resolutionNote     String?
+  openedAt           DateTime        @default(now())
+  resolvedAt         DateTime?
+
+  order              Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  openedBy           User            @relation("OpenedByUser", fields: [openedById], references: [id], onDelete: Restrict)
+  evidence           DisputeEvidence[]
+
+  @@index([status, openedAt])
+  @@index([openedById, openedAt])
+}
+
+model DisputeEvidence {
+  id                 String    @id @default(uuid())
+  disputeId          String
+  uploaderId         String
+  evidenceType       String
+  storageUrl         String
+  note               String?
+  createdAt          DateTime  @default(now())
+
+  dispute            Dispute   @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+
+  @@index([disputeId, createdAt])
+}
+
+model ModerationCase {
+  id                 String    @id @default(uuid())
+  listingId          String?
+  orderId            String?
+  moderatorId        String?
+  caseType           String
+  status             String
+  riskSnapshot       Json?
+  decision           String?
+  decisionNote       String?
+  createdAt          DateTime  @default(now())
+  closedAt           DateTime?
+
+  listing            Listing?  @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  moderator          User?     @relation("ModeratorCases", fields: [moderatorId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([caseType, status])
+}
+
+model AuditLog {
+  id                 String    @id @default(uuid())
+  actorUserId        String?
+  action             String
+  entityType         String
+  entityId           String
+  beforeJson         Json?
+  afterJson          Json?
+  ipAddress          String?
+  userAgent          String?
+  createdAt          DateTime  @default(now())
+
+  actor              User?     @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+}
+
+model Notification {
+  id                 String    @id @default(uuid())
+  userId             String
+  channel            String
+  templateCode       String
+  payloadJson        Json
+  status             String
+  retryCount         Int       @default(0)
+  nextRetryAt        DateTime?
+  createdAt          DateTime  @default(now())
+
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([status, nextRetryAt])
+}
+```
+
+## 5) Key Constraints and Integrity Notes
+- One active inspection per order (`Inspection.orderId @unique`).
+- One dispute object per order (`Dispute.orderId @unique`); status handles lifecycle.
+- Milestone payout uniqueness (`@@unique([orderId, milestone])`).
+- Token rotation support with `familyId` and hashed token storage.
+- Audit logs are append-only; update/delete operations on audit table are not exposed by service layer.
+
+## 6) Migration Strategy (Prisma Migrate)
+Migration process:
+1. Modify `schema.prisma` and run migration generation.
+2. Validate generated SQL in staging.
+3. Apply expand-and-contract:
+   - Expand: add nullable columns/new tables first.
+   - Backfill data through controlled scripts.
+   - Switch application reads/writes to new fields.
+   - Contract: remove deprecated columns in later release.
+4. Never drop critical columns in same release as code switch.
+5. Financial table migrations require maintenance window and rollback plan.
+
+Data loss prevention:
+- mandatory backup before destructive migration,
+- migration reviewed in PR with schema diff,
+- canary rollout for production migration steps.
+
+## 7) Nasty Query (Slowest Expected Query)
+Use case: moderation dashboard needs suspicious listings by combined risk and dispute history, ordered by urgency.
+
+Query (for analysis and index planning):
+```sql
+SELECT
+  l.id,
+  l.seller_id,
+  l.breed,
+  l.price_kzt,
+  l.risk_score,
+  COUNT(d.id) FILTER (WHERE d.status IN ('OPEN','UNDER_REVIEW')) AS active_disputes,
+  MAX(d.opened_at) AS last_dispute_at
+FROM listings l
+LEFT JOIN orders o ON o.listing_id = l.id
+LEFT JOIN disputes d ON d.order_id = o.id
+WHERE l.status = 'PUBLISHED'
+  AND l.risk_score >= 60
+GROUP BY l.id
+ORDER BY l.risk_score DESC, active_disputes DESC, l.created_at DESC
+LIMIT 100;
+```
+
+Index strategy:
+- `listings(status, risk_score, created_at DESC)`
+- `orders(listing_id)`
+- `disputes(order_id, status, opened_at DESC)`
+
+Expected plan notes:
+- Index scan on high-risk published listings.
+- Hash/merge join from orders -> disputes.
+- Group aggregation on listing id with filtered count.
+- For high cardinality, partial index on `disputes` for active statuses can reduce heap reads.
+
+Predicted EXPLAIN ANALYZE behavior (after warm cache):
+- latency target < 120 ms for 500k listings / 5M orders scale.
+- dominant cost in join+aggregate stage; mitigated by composite indexes and capped result window.
+
+## 8) Cursor Pagination Standard
+All list APIs use keyset pagination; canonical cursor fields:
+- primary sort: `createdAt DESC`
+- tie-break sort: `id DESC`
+
+Reason: stable performance and consistency at large offsets versus OFFSET/LIMIT degradation.
