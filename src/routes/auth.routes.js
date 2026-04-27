@@ -4,6 +4,7 @@ const express = require("express");
 const { z } = require("zod");
 const { prisma } = require("../config/prisma");
 const { authRateLimit } = require("../middleware/rate-limit");
+const { requireAuth } = require("../middleware/auth");
 const { ApiError } = require("../utils/errors");
 const {
   signAccessToken,
@@ -196,6 +197,18 @@ router.post("/logout", async (req, res, next) => {
     if (error instanceof z.ZodError) {
       return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
     }
+    return next(error);
+  }
+});
+
+router.post("/logout-all", requireAuth, async (req, res, next) => {
+  try {
+    await prisma.refreshToken.updateMany({
+      where: { userId: req.user.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return res.status(200).json({ success: true });
+  } catch (error) {
     return next(error);
   }
 });

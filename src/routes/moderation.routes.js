@@ -12,6 +12,40 @@ const resolveSchema = z.object({
   note: z.string().optional(),
 });
 
+router.get("/cases", requireAuth, requireRoles("MODERATOR", "ADMIN"), async (req, res, next) => {
+  try {
+    const limit = Math.min(Number(req.query.limit || 20), 100);
+    const cursor = req.query.cursor ? String(req.query.cursor) : null;
+    const status = req.query.status ? String(req.query.status) : undefined;
+    const caseType = req.query.caseType ? String(req.query.caseType) : undefined;
+
+    const data = await prisma.moderationCase.findMany({
+      where: { ...(status ? { status } : {}), ...(caseType ? { caseType } : {}) },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    });
+    const hasNext = data.length > limit;
+    const slice = hasNext ? data.slice(0, limit) : data;
+    const nextCursor = hasNext ? slice[slice.length - 1].id : null;
+    return res.status(200).json({ data: slice, meta: { hasNext, nextCursor } });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/cases/:caseId", requireAuth, requireRoles("MODERATOR", "ADMIN"), async (req, res, next) => {
+  try {
+    const caseId = z.string().uuid().parse(req.params.caseId);
+    const modCase = await prisma.moderationCase.findUnique({ where: { id: caseId } });
+    if (!modCase) throw new ApiError(404, "NOT_FOUND", "Moderation case not found");
+    return res.status(200).json(modCase);
+  } catch (error) {
+    if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
+    return next(error);
+  }
+});
+
 router.get("/disputes", requireAuth, requireRoles("MODERATOR", "ADMIN"), async (req, res, next) => {
   try {
     // COMPLEXITY_REQ_4: fraud/risk moderation queue with status-based triage.

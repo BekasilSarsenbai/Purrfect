@@ -111,4 +111,26 @@ router.get("/audit-logs", requireAuth, requireRoles("ADMIN"), async (req, res, n
   }
 });
 
+router.get("/dashboard-kpis", requireAuth, requireRoles("ADMIN"), async (req, res, next) => {
+  try {
+    const [usersTotal, listingsPublished, disputesOpen, ordersCompleted, activeRiskFlags] = await Promise.all([
+      prisma.user.count({ where: { status: "ACTIVE" } }),
+      prisma.listing.count({ where: { status: "PUBLISHED" } }),
+      prisma.dispute.count({ where: { status: { in: ["OPEN", "UNDER_REVIEW"] } } }),
+      prisma.order.count({ where: { status: "COMPLETED" } }),
+      prisma.moderationCase.count({ where: { caseType: "RISK_FLAG", status: "OPEN" } }),
+    ]);
+
+    return res.status(200).json({
+      usersTotal,
+      listingsPublished,
+      disputesOpen,
+      ordersCompleted,
+      activeRiskFlags,
+    });
+  } catch (error) {
+    return next(error);
+  }
+});
+
 module.exports = router;

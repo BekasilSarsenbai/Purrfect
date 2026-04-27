@@ -173,4 +173,36 @@ router.get("/:disputeId/evidence", requireAuth, async (req, res, next) => {
   }
 });
 
+router.post("/:disputeId/reopen", requireAuth, async (req, res, next) => {
+  try {
+    const disputeId = z.string().uuid().parse(req.params.disputeId);
+    const dispute = await prisma.dispute.findUnique({ where: { id: disputeId } });
+    if (!dispute) throw new ApiError(404, "NOT_FOUND", "Dispute not found");
+    const order = await prisma.order.findUnique({ where: { id: dispute.orderId } });
+    if (!order || !canAccessDispute(dispute, order, req.user)) throw new ApiError(403, "FORBIDDEN", "No access to dispute");
+    if (!dispute.status.startsWith("RESOLVED_")) throw new ApiError(409, "CONFLICT", "Only resolved disputes can be reopened");
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const nextDispute = await tx.dispute.update({
+        where: { id: disputeId },
+        data: {
+          status: "UNDER_REVIEW",
+          resolvedAt: null,
+          resolutionNote: `${dispute.resolutionNote || ""}\n[REOPENED by ${req.user.id} at ${new Date().toISOString()}]`.trim(),
+        },
+      });
+      await tx.order.update({
+        where: { id: dispute.orderId },
+        data: { status: "DISPUTED", completedAt: null },
+      });
+      return nextDispute;
+    });
+
+    return res.status(200).json(updated);
+  } catch (error) {
+    if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
+    return next(error);
+  }
+});
+
 module.exports = router;
