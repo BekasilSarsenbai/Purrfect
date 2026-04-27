@@ -1,0 +1,121 @@
+{
+  "info": {
+    "name": "Purrfect Sprint 1 Defense",
+    "_postman_id": "d2f83d10-6c5a-49d5-8eab-70b6137e1d0b",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth Register",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"buyer.demo@purrfect.kz\",\n  \"password\": \"Str0ngPass!23\",\n  \"displayName\": \"Buyer Demo\",\n  \"role\": \"BUYER\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Auth Login",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] },
+        "body": { "mode": "raw", "raw": "{\n  \"email\": \"buyer.demo@purrfect.kz\",\n  \"password\": \"Str0ngPass!23\"\n}" }
+      }
+    },
+    {
+      "name": "Auth Refresh",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/refresh", "host": ["{{baseUrl}}"], "path": ["auth", "refresh"] },
+        "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+      }
+    },
+    {
+      "name": "Auth Logout",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] },
+        "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" }
+      }
+    },
+    {
+      "name": "Protected Users Me",
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": { "raw": "{{baseUrl}}/users/me", "host": ["{{baseUrl}}"], "path": ["users", "me"] }
+      }
+    },
+    {
+      "name": "Create Order",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/orders", "host": ["{{baseUrl}}"], "path": ["orders"] },
+        "body": { "mode": "raw", "raw": "{\n  \"listingId\": \"{{listingId}}\"\n}" }
+      }
+    },
+    {
+      "name": "Handover Confirm",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": {
+          "raw": "{{baseUrl}}/orders/{{orderId}}/handover-confirm",
+          "host": ["{{baseUrl}}"],
+          "path": ["orders", "{{orderId}}", "handover-confirm"]
+        }
+      }
+    },
+    {
+      "name": "Inspection Submit",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/orders/{{orderId}}/inspection",
+          "host": ["{{baseUrl}}"],
+          "path": ["orders", "{{orderId}}", "inspection"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"clinicName\": \"Almaty Vet Care\",\n  \"reportUrl\": \"https://files.purrfect.kz/reports/demo.pdf\",\n  \"outcome\": \"PASSED\",\n  \"notes\": \"No critical findings\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Dispute Open",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+        ],
+        "url": { "raw": "{{baseUrl}}/disputes", "host": ["{{baseUrl}}"], "path": ["disputes"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"orderId\": \"{{orderId}}\",\n  \"reasonCode\": \"NOT_AS_DESCRIBED\",\n  \"description\": \"Issue for moderation demo\"\n}"
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "listingId", "value": "" },
+    { "key": "orderId", "value": "" }
+  ]
+}

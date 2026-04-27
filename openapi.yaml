@@ -752,6 +752,464 @@ paths:
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /auth/logout-all:
+    post:
+      tags: [auth]
+      summary: Revoke all active sessions for current user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: All sessions revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me/change-password:
+    post:
+      tags: [users]
+      summary: Change current user password and revoke sessions
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+                  minLength: 8
+      responses:
+        '200':
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: Password updated. Please login again.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me/sessions:
+    get:
+      tags: [users]
+      summary: List refresh token sessions for current user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Sessions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    familyId: { type: string }
+                    createdAt: { type: string, format: date-time }
+                    expiresAt: { type: string, format: date-time }
+                    revokedAt: { type: string, format: date-time, nullable: true }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me/sessions/{sessionId}:
+    delete:
+      tags: [users]
+      summary: Revoke one session by id
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Session revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listingId}/media:
+    post:
+      tags: [listings]
+      summary: Add media to listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mediaType, storageUrl, checksumSha256]
+              properties:
+                mediaType:
+                  type: string
+                  enum: [PHOTO, VIDEO]
+                storageUrl:
+                  type: string
+                  format: uri
+                checksumSha256:
+                  type: string
+      responses:
+        '201': { description: Media added }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [listings]
+      summary: List listing media
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200': { description: Listing media list }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listingId}/documents:
+    post:
+      tags: [listings]
+      summary: Add document to listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '201': { description: Document added }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    get:
+      tags: [listings]
+      summary: List listing documents
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200': { description: Listing documents list }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listingId}/documents/{documentId}/verify:
+    post:
+      tags: [moderation]
+      summary: Verify listing document as moderator
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+        - in: path
+          name: documentId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '201': { description: Document verification created }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{orderId}/transactions:
+    get:
+      tags: [orders]
+      summary: List escrow transactions for order
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdParam'
+      responses:
+        '200': { description: Order transactions }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{orderId}/payouts:
+    get:
+      tags: [orders]
+      summary: List payout milestones for order
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdParam'
+      responses:
+        '200': { description: Order payouts }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{orderId}/timeline:
+    get:
+      tags: [orders]
+      summary: Get business timeline for order
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdParam'
+      responses:
+        '200': { description: Order timeline }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /orders/{orderId}/audit:
+    get:
+      tags: [orders]
+      summary: Get consolidated audit view for order
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/OrderIdParam'
+      responses:
+        '200': { description: Order audit details }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /disputes/{disputeId}/reopen:
+    post:
+      tags: [disputes]
+      summary: Reopen previously resolved dispute
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/DisputeIdParam'
+      responses:
+        '200': { description: Dispute reopened }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/cases:
+    get:
+      tags: [moderation]
+      summary: List moderation cases
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200': { description: Moderation cases page }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/cases/{caseId}:
+    get:
+      tags: [moderation]
+      summary: Get moderation case detail
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: caseId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200': { description: Moderation case detail }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/listings:
+    get:
+      tags: [moderation]
+      summary: List listing moderation queue
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200': { description: Listing moderation queue }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/listings/{listingId}/approve:
+    post:
+      tags: [moderation]
+      summary: Approve pending listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200': { description: Listing approved }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/listings/{listingId}/reject:
+    post:
+      tags: [moderation]
+      summary: Reject pending listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200': { description: Listing rejected }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/listings/{listingId}/risk-flag:
+    post:
+      tags: [moderation]
+      summary: Set listing risk score and create risk case
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200': { description: Risk flag applied }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/listings/{listingId}/risk-signals:
+    get:
+      tags: [moderation]
+      summary: Get risk signals for listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200': { description: Listing risk signals }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/dashboard-kpis:
+    get:
+      tags: [admin]
+      summary: Get admin dashboard KPI summary
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: KPI summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  usersTotal: { type: integer, example: 2400 }
+                  listingsPublished: { type: integer, example: 312 }
+                  disputesOpen: { type: integer, example: 8 }
+                  ordersCompleted: { type: integer, example: 128 }
+                  activeRiskFlags: { type: integer, example: 11 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
 components:
   securitySchemes:
     bearerAuth:
