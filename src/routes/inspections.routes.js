@@ -78,6 +78,10 @@ router.get("/:orderId/inspection", requireAuth, async (req, res, next) => {
 router.post("/:orderId/inspection/approve", requireAuth, requireRoles("BUYER"), async (req, res, next) => {
   try {
     const orderId = z.string().uuid().parse(req.params.orderId);
+    // COMPLEXITY_REQ_5: inspection-gated final payout release — milestone 2 is only
+    // disbursed after the buyer explicitly approves a PASSED veterinary inspection.
+    // The entire state transition (order COMPLETED + listing SOLD + payout released +
+    // escrow ledger entry) is atomic: all succeed or all roll back.
     const result = await prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
       if (!order) throw new ApiError(404, "NOT_FOUND", "Order not found");
