@@ -9,6 +9,13 @@ async function registerAndLogin({ email, role, displayName }) {
     displayName,
     role,
   });
+  // Sprint 2: business endpoints require a verified email. The integration test
+  // is the platform itself, so we flip the flag directly via the ORM rather
+  // than mocking the email worker.
+  await prisma.user.update({
+    where: { email },
+    data: { emailVerifiedAt: new Date() },
+  });
   const login = await request(app).post("/auth/login").send({
     email,
     password: "Str0ngPass!123",

@@ -872,6 +872,234 @@ paths:
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /users/me/profile:
+    patch:
+      tags: [users]
+      summary: Update current user profile (displayName, phone)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                displayName:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                  example: Aizere K.
+                phone:
+                  type: string
+                  example: '+77011234567'
+      responses:
+        '200':
+          description: Profile updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me/stats:
+    get:
+      tags: [users]
+      summary: Aggregated counters for current user (listings, orders, disputes, unread notifications)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Stats snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trustScore: { type: integer, example: 76 }
+                  listings:
+                    type: object
+                    properties:
+                      active: { type: integer, example: 3 }
+                      sold: { type: integer, example: 11 }
+                  orders:
+                    type: object
+                    properties:
+                      asBuyer:
+                        type: object
+                        properties:
+                          total: { type: integer, example: 4 }
+                          completed: { type: integer, example: 3 }
+                      asSeller:
+                        type: object
+                        properties:
+                          total: { type: integer, example: 12 }
+                          completed: { type: integer, example: 11 }
+                  openDisputes: { type: integer, example: 0 }
+                  unreadNotifications: { type: integer, example: 2 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me/notifications:
+    get:
+      tags: [users]
+      summary: List notifications for current user (cursor pagination)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [UNREAD, READ, FAILED]
+      responses:
+        '200':
+          description: Notifications page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        channel: { type: string, example: EMAIL }
+                        templateCode: { type: string, example: ORDER_FUNDED }
+                        payloadJson: { type: object }
+                        status: { type: string, example: UNREAD }
+                        createdAt: { type: string, format: date-time }
+                  meta:
+                    type: object
+                    properties:
+                      hasNext: { type: boolean }
+                      nextCursor: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me/notifications/{notificationId}/read:
+    patch:
+      tags: [users]
+      summary: Mark a single notification as read
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: notificationId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  alreadyRead: { type: boolean, example: false }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me/notifications/mark-all-read:
+    post:
+      tags: [users]
+      summary: Mark every unread notification as read
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Bulk update result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  updated: { type: integer, example: 7 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/me/account/delete:
+    post:
+      tags: [users]
+      summary: Soft-delete current account (anonymize, revoke sessions)
+      description: >
+        Requires password confirmation. Refuses while orders are still funded
+        / under inspection / disputed. Email and phone are anonymized so they
+        can be reused.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+                  example: 'CurrentPass!123'
+                reason:
+                  type: string
+                  maxLength: 500
+                  example: 'No longer using marketplace'
+      responses:
+        '200':
+          description: Account deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /users/{userId}:
+    get:
+      tags: [users]
+      summary: Public profile of any user (limited fields)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Public profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  displayName: { type: string }
+                  role: { type: string, enum: [BUYER, SELLER, MODERATOR, ADMIN] }
+                  trustScore: { type: integer }
+                  createdAt: { type: string, format: date-time }
+                  activeListings: { type: integer, example: 4 }
+                  completedSales: { type: integer, example: 11 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
   /listings/{listingId}/media:
     post:
       tags: [listings]
@@ -1210,6 +1438,779 @@ paths:
         '422': { $ref: '#/components/responses/UnprocessableEntity' }
         '500': { $ref: '#/components/responses/InternalError' }
 
+  /auth/verify-email:
+    post:
+      tags: [auth]
+      summary: Confirm email ownership using the verification token
+      description: >
+        Token is sent in the verification email queued during registration. One-time use,
+        24h TTL. Accepts the token in the JSON body or as `?token=` query parameter
+        (so the email link works directly).
+      parameters:
+        - in: query
+          name: token
+          required: false
+          schema: { type: string, minLength: 16, maxLength: 256 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token: { type: string, example: 06dae34d4400d2e57e40f6667a6570083cf4c47d6b6f1470362b767c7f879a95 }
+      responses:
+        '200':
+          description: Email verified
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  alreadyVerified: { type: boolean, example: false }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/resend-verification:
+    post:
+      tags: [auth]
+      summary: Re-send the verification email (rate-limited, always 200 to avoid enumeration)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, example: buyer@purrfect.local }
+      responses:
+        '200':
+          description: Acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429':
+          description: Too many requests
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/forgot-password:
+    post:
+      tags: [auth]
+      summary: Start password reset (always returns 200 to prevent enumeration)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, example: buyer.demo@purrfect.kz }
+      responses:
+        '200':
+          description: Reset link issued (or pretended to be issued)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  devToken:
+                    type: string
+                    description: Only present when NODE_ENV != production. Use directly in /auth/reset-password.
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /auth/reset-password:
+    post:
+      tags: [auth]
+      summary: Complete password reset using a token from /auth/forgot-password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, newPassword]
+              properties:
+                token: { type: string, example: 'a3f1...32hex' }
+                newPassword: { type: string, minLength: 8, example: 'NewStr0ngPass!23' }
+      responses:
+        '200':
+          description: Password reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/me:
+    get:
+      tags: [listings]
+      summary: List current seller's listings (any status)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [DRAFT, PENDING_REVIEW, PUBLISHED, RESERVED, SOLD, REJECTED, ARCHIVED]
+      responses:
+        '200':
+          description: Paged listings owned by the caller
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedListings'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/search:
+    get:
+      tags: [listings]
+      summary: Search published listings (text + price range + filters)
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - in: query
+          name: q
+          schema: { type: string, minLength: 1, maxLength: 120 }
+          example: maine coon
+        - in: query
+          name: priceMin
+          schema: { type: number, minimum: 0 }
+          example: 100000
+        - in: query
+          name: priceMax
+          schema: { type: number, minimum: 0 }
+          example: 500000
+        - in: query
+          name: breed
+          schema: { type: string }
+        - in: query
+          name: city
+          schema: { type: string }
+        - in: query
+          name: sort
+          schema:
+            type: string
+            enum: ['-createdAt', 'createdAt', '-priceKzt', 'priceKzt']
+            default: '-createdAt'
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedListings'
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listingId}/republish:
+    post:
+      tags: [listings]
+      summary: Move a REJECTED or ARCHIVED listing back to DRAFT for editing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200':
+          description: Listing reopened as DRAFT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Listing'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listingId}/report:
+    post:
+      tags: [listings]
+      summary: Report a listing — opens a moderation case
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reasonCode]
+              properties:
+                reasonCode:
+                  type: string
+                  enum: [FRAUD, MISLEADING, HEALTH_CONCERN, INAPPROPRIATE, OTHER]
+                note:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '201':
+          description: Moderation case opened
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listingId}/media/{mediaId}:
+    delete:
+      tags: [listings]
+      summary: Remove a media item from a listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+        - in: path
+          name: mediaId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Media removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /listings/{listingId}/documents/{documentId}:
+    delete:
+      tags: [listings]
+      summary: Remove a document from a listing
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+        - in: path
+          name: documentId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Document removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /disputes/{disputeId}/comments:
+    get:
+      tags: [disputes]
+      summary: List comments on a dispute
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: disputeId
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Comments page
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        disputeId: { type: string, format: uuid }
+                        authorId: { type: string, format: uuid }
+                        text: { type: string }
+                        createdAt: { type: string, format: date-time }
+                  meta:
+                    type: object
+                    properties:
+                      hasNext: { type: boolean }
+                      nextCursor: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [disputes]
+      summary: Post a comment to a dispute thread
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: disputeId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, minLength: 1, maxLength: 2000 }
+      responses:
+        '201':
+          description: Comment created
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/cases/{caseId}/close:
+    patch:
+      tags: [moderation]
+      summary: Close a moderation case
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: caseId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decision]
+              properties:
+                decision: { type: string, example: NO_VIOLATION }
+                decisionNote: { type: string, maxLength: 2000 }
+      responses:
+        '200':
+          description: Case closed
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/listings/{listingId}/risk-flag/clear:
+    post:
+      tags: [moderation]
+      summary: Clear all OPEN risk flags on a listing and reset risk score
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200':
+          description: Risk flags cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  listingId: { type: string, format: uuid }
+                  closedCases: { type: integer, example: 2 }
+                  currentRiskScore: { type: integer, example: 0 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /moderation/listings/{listingId}/full-context:
+    get:
+      tags: [moderation]
+      summary: Full moderation context — listing + media + docs + cases + seller
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/ListingIdParam'
+      responses:
+        '200':
+          description: Aggregate snapshot for moderator review
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/users/{userId}/ban:
+    patch:
+      tags: [admin]
+      summary: Ban a user (sets status to SUSPENDED, revokes sessions). Reason is required.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 5
+                  maxLength: 500
+                  example: 'Multiple verified fraud reports'
+      responses:
+        '200':
+          description: User banned (status=SUSPENDED)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/users/{userId}:
+    get:
+      tags: [admin]
+      summary: Detailed view of a single user (admin) with usage stats
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: User detail with stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/User'
+                  - type: object
+                    properties:
+                      stats:
+                        type: object
+                        properties:
+                          listingsCount: { type: integer }
+                          activeListingsCount: { type: integer }
+                          ordersAsBuyer: { type: integer }
+                          ordersAsSeller: { type: integer }
+                          openDisputes: { type: integer }
+                          activeSessions: { type: integer }
+                          auditLogsCount: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [admin]
+      summary: Soft-delete a user (anonymize, revoke sessions). Refuses while orders are in flight.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: reason
+          schema: { type: string, maxLength: 500 }
+          example: 'GDPR erasure request'
+      responses:
+        '200':
+          description: User soft-deleted
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/orders/{orderId}:
+    get:
+      tags: [admin]
+      summary: Detailed view of a single order (admin) including escrow, payouts, inspection, dispute
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Order with all related entities
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/users:
+    get:
+      tags: [admin]
+      summary: List users (admin only) with role/status/search filters
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - in: query
+          name: role
+          schema: { type: string, enum: [BUYER, SELLER, MODERATOR, ADMIN] }
+        - in: query
+          name: status
+          schema: { type: string, enum: [ACTIVE, SUSPENDED, DELETED] }
+        - in: query
+          name: q
+          schema: { type: string, minLength: 1, maxLength: 120 }
+      responses:
+        '200':
+          description: Users page
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [admin]
+      summary: Create privileged user (MODERATOR/ADMIN) — admin only
+      description: >
+        Direct creation of a MODERATOR or ADMIN account. Bypasses public
+        /auth/register (which is restricted to BUYER/SELLER) so onboarding
+        platform staff does not require a promotion step. Argon2-hashed
+        password, audit-logged as `ADMIN_USER_CREATE`.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, displayName, role]
+              properties:
+                email: { type: string, format: email, example: mod1@purrfect.local }
+                password:
+                  type: string
+                  minLength: 8
+                  example: ModPass!2026
+                  description: At least 8 chars, uppercase, lowercase, digit, special character.
+                displayName: { type: string, minLength: 2, maxLength: 100, example: Mod One }
+                role:
+                  type: string
+                  enum: [MODERATOR, ADMIN]
+                  example: MODERATOR
+      responses:
+        '201':
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  email: { type: string, format: email }
+                  role: { type: string, enum: [MODERATOR, ADMIN] }
+                  status: { type: string, example: ACTIVE }
+                  displayName: { type: string }
+                  trustScore: { type: integer, example: 50 }
+                  createdAt: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/orders:
+    get:
+      tags: [admin]
+      summary: List orders globally (admin only) with status/buyer/seller filters
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/CursorParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [CREATED, FUNDED_100, HANDOVER_CONFIRMED, INSPECTION_ACTIVE, DISPUTED, COMPLETED, CANCELLED]
+        - in: query
+          name: buyerId
+          schema: { type: string, format: uuid }
+        - in: query
+          name: sellerId
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Orders page
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/orders/{orderId}/force-complete:
+    post:
+      tags: [admin]
+      summary: Force-complete a stuck order (releases milestone 2 if pending)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 5, maxLength: 500 }
+      responses:
+        '200':
+          description: Order completed
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/queues/email/stats:
+    get:
+      tags: [admin]
+      summary: Email queue observability — counts and attached workers
+      description: BullMQ-backed email queue. Returns counts per state and worker registry.
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Queue snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queue: { type: string, example: email }
+                  counts:
+                    type: object
+                    properties:
+                      active: { type: integer, example: 0 }
+                      completed: { type: integer, example: 12 }
+                      failed: { type: integer, example: 0 }
+                      delayed: { type: integer, example: 0 }
+                      waiting: { type: integer, example: 1 }
+                      paused: { type: integer, example: 0 }
+                  workersAttached:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        addr: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /admin/financial-summary:
+    get:
+      tags: [admin]
+      summary: Aggregate escrow + platform fee totals over a time window
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Financial summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  window:
+                    type: object
+                    properties:
+                      from: { type: string, format: date-time, nullable: true }
+                      to: { type: string, format: date-time, nullable: true }
+                  txTypes:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        count: { type: integer }
+                        sumKzt: { type: number }
+                  totalAmountKzt: { type: number }
+                  totalCount: { type: integer }
+                  platformFeeKzt: { type: number }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/UnprocessableEntity' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /health/live:
+    get:
+      tags: [system]
+      summary: Liveness probe (process is up)
+      responses:
+        '200':
+          description: Live
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: live }
+
+  /health/ready:
+    get:
+      tags: [system]
+      summary: Readiness probe (DB + Redis reachable)
+      responses:
+        '200':
+          description: Ready
+        '503':
+          description: At least one dependency is down
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: not_ready }
+                  checks:
+                    type: object
+                    properties:
+                      db: { type: string, enum: [up, down] }
+                      redis: { type: string, enum: [up, down] }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1328,6 +2329,15 @@ components:
           example:
             code: INTERNAL_ERROR
             message: Unexpected server error
+    TooManyRequests:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: TOO_MANY_REQUESTS
+            message: Too many auth attempts. Try again in 1 minute.
 
   schemas:
     ErrorResponse:

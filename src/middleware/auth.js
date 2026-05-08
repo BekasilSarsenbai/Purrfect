@@ -13,7 +13,15 @@ async function requireAuth(req, res, next) {
 
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, role: true, status: true, displayName: true, trustScore: true },
+      select: {
+        id: true,
+        email: true,
+        role: true,
+        status: true,
+        displayName: true,
+        trustScore: true,
+        emailVerifiedAt: true,
+      },
     });
 
     if (!user || user.status !== "ACTIVE") {
@@ -39,4 +47,26 @@ function requireRoles(...roles) {
   };
 }
 
-module.exports = { requireAuth, requireRoles };
+/**
+ * Block business actions for users who haven't verified email yet.
+ * Login itself stays open so they can request a resend; this gate sits
+ * on every state-changing endpoint mounted under the API.
+ */
+function requireVerifiedEmail(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ code: "UNAUTHORIZED", message: "Authentication required" });
+  }
+  if (req.user.role === "ADMIN" || req.user.role === "MODERATOR") {
+    // Privileged accounts are seeded/admin-created and trusted.
+    return next();
+  }
+  if (!req.user.emailVerifiedAt) {
+    return res.status(403).json({
+      code: "EMAIL_NOT_VERIFIED",
+      message: "Email is not verified. Confirm via the link sent to your inbox or request a new one.",
+    });
+  }
+  return next();
+}
+
+module.exports = { requireAuth, requireRoles, requireVerifiedEmail };

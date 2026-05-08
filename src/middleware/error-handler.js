@@ -5,9 +5,46 @@ function notFoundHandler(req, res) {
   });
 }
 
+function mapPrismaError(err) {
+  if (err.code === "P2002") {
+    return {
+      status: 409,
+      code: "CONFLICT",
+      message: "Resource with this unique value already exists",
+      details: err.meta || null,
+    };
+  }
+  if (err.code === "P2025") {
+    return {
+      status: 404,
+      code: "NOT_FOUND",
+      message: err.meta?.cause || "Record not found",
+      details: null,
+    };
+  }
+  if (err.code === "P2003") {
+    return {
+      status: 409,
+      code: "CONFLICT",
+      message: "Foreign key constraint failed",
+      details: err.meta || null,
+    };
+  }
+  return null;
+}
+
 function errorHandler(err, req, res, next) {
   if (res.headersSent) {
     return next(err);
+  }
+
+  const prismaMapped = err && typeof err === "object" && err.code && err.code.startsWith("P") ? mapPrismaError(err) : null;
+  if (prismaMapped) {
+    return res.status(prismaMapped.status).json({
+      code: prismaMapped.code,
+      message: prismaMapped.message,
+      details: prismaMapped.details,
+    });
   }
 
   const status = err.status || 500;

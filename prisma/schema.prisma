@@ -73,24 +73,27 @@ enum VerificationDecision {
 }
 
 model User {
-  id              String          @id @default(uuid())
-  email           String          @unique
-  phone           String?         @unique
-  passwordHash    String
-  role            UserRole
-  status          UserStatus      @default(ACTIVE)
-  displayName     String
-  trustScore      Int             @default(50)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  listings        Listing[]
-  buyOrders       Order[]         @relation("BuyerOrders")
-  refreshTokens   RefreshToken[]
-  documentVerifications DocumentVerification[] @relation("ModeratorDocumentVerifications")
-  moderationCases ModerationCase[] @relation("ModeratorCases")
-  disputesOpened  Dispute[]       @relation("OpenedByUser")
-  auditLogs       AuditLog[]
-  notifications   Notification[]
+  id                          String          @id @default(uuid())
+  email                       String          @unique
+  phone                       String?         @unique
+  passwordHash                String
+  role                        UserRole
+  status                      UserStatus      @default(ACTIVE)
+  displayName                 String
+  trustScore                  Int             @default(50)
+  emailVerifiedAt             DateTime?
+  emailVerificationTokenHash  String?         @unique
+  emailVerificationExpiresAt  DateTime?
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
+  listings                    Listing[]
+  buyOrders                   Order[]         @relation("BuyerOrders")
+  refreshTokens               RefreshToken[]
+  documentVerifications       DocumentVerification[] @relation("ModeratorDocumentVerifications")
+  moderationCases             ModerationCase[] @relation("ModeratorCases")
+  disputesOpened              Dispute[]       @relation("OpenedByUser")
+  auditLogs                   AuditLog[]
+  notifications               Notification[]
 }
 
 model RefreshToken {

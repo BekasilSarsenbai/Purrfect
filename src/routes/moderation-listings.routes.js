@@ -2,6 +2,7 @@ const express = require("express");
 const { z } = require("zod");
 const { prisma } = require("../config/prisma");
 const { requireAuth, requireRoles } = require("../middleware/auth");
+const { parsePagination, buildPagedResponse } = require("../utils/pagination");
 const { ApiError } = require("../utils/errors");
 
 const router = express.Router();
@@ -17,8 +18,7 @@ const riskFlagSchema = z.object({
 
 router.get("/listings", requireAuth, requireRoles("MODERATOR", "ADMIN"), async (req, res, next) => {
   try {
-    const limit = Math.min(Number(req.query.limit || 20), 100);
-    const cursor = req.query.cursor ? String(req.query.cursor) : null;
+    const { limit, cursor } = parsePagination(req.query);
     const status = req.query.status ? String(req.query.status) : "PENDING_REVIEW";
 
     const data = await prisma.listing.findMany({
@@ -28,11 +28,9 @@ router.get("/listings", requireAuth, requireRoles("MODERATOR", "ADMIN"), async (
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
     });
 
-    const hasNext = data.length > limit;
-    const slice = hasNext ? data.slice(0, limit) : data;
-    const nextCursor = hasNext ? slice[slice.length - 1].id : null;
-    return res.status(200).json({ data: slice, meta: { hasNext, nextCursor } });
+    return res.status(200).json(buildPagedResponse(data, limit));
   } catch (error) {
+    if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
     return next(error);
   }
 });
@@ -44,6 +42,18 @@ router.post("/listings/:listingId/approve", requireAuth, requireRoles("MODERATOR
     const listing = await prisma.listing.findUnique({ where: { id: listingId } });
     if (!listing) throw new ApiError(404, "NOT_FOUND", "Listing not found");
     if (listing.status !== "PENDING_REVIEW") throw new ApiError(409, "CONFLICT", "Listing is not pending review");
+
+    // A listing can only be approved if no document was rejected and no document is still pending.
+    const docs = await prisma.listingDocument.findMany({
+      where: { listingId },
+      include: { verifications: { orderBy: { createdAt: "desc" }, take: 1 } },
+    });
+    for (const doc of docs) {
+      const latest = doc.verifications[0];
+      if (!latest || latest.decision !== "APPROVED") {
+        throw new ApiError(409, "CONFLICT", "All documents must be APPROVED before publishing the listing");
+      }
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const changed = await tx.listing.update({
@@ -59,6 +69,18 @@ router.post("/listings/:listingId/approve", requireAuth, requireRoles("MODERATOR
           decision: "APPROVE",
           decisionNote: body.note || null,
           closedAt: new Date(),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user.id,
+          action: "LISTING_APPROVED",
+          entityType: "Listing",
+          entityId: listingId,
+          beforeJson: { status: listing.status },
+          afterJson: { status: "PUBLISHED" },
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"] || null,
         },
       });
       return changed;
@@ -94,6 +116,18 @@ router.post("/listings/:listingId/reject", requireAuth, requireRoles("MODERATOR"
           closedAt: new Date(),
         },
       });
+      await tx.auditLog.create({
+        data: {
+          actorUserId: req.user.id,
+          action: "LISTING_REJECTED",
+          entityType: "Listing",
+          entityId: listingId,
+          beforeJson: { status: listing.status },
+          afterJson: { status: "REJECTED" },
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"] || null,
+        },
+      });
       return changed;
     });
     return res.status(200).json(updated);
@@ -115,6 +149,11 @@ router.post("/listings/:listingId/risk-flag", requireAuth, requireRoles("MODERAT
         where: { id: listingId },
         data: { riskScore: body.riskScore },
       });
+      // Close any prior OPEN risk flag for this listing first to avoid KPI inflation.
+      await tx.moderationCase.updateMany({
+        where: { listingId, caseType: "RISK_FLAG", status: "OPEN" },
+        data: { status: "CLOSED_SUPERSEDED", closedAt: new Date() },
+      });
       await tx.moderationCase.create({
         data: {
           listingId,
@@ -134,6 +173,36 @@ router.post("/listings/:listingId/risk-flag", requireAuth, requireRoles("MODERAT
   }
 });
 
+router.post("/listings/:listingId/risk-flag/clear", requireAuth, requireRoles("MODERATOR", "ADMIN"), async (req, res, next) => {
+  try {
+    const listingId = z.string().uuid().parse(req.params.listingId);
+    const listing = await prisma.listing.findUnique({ where: { id: listingId } });
+    if (!listing) throw new ApiError(404, "NOT_FOUND", "Listing not found");
+
+    const result = await prisma.$transaction(async (tx) => {
+      const closed = await tx.moderationCase.updateMany({
+        where: { listingId, caseType: "RISK_FLAG", status: "OPEN" },
+        data: {
+          status: "CLOSED_RESOLVED",
+          decision: "CLEARED",
+          moderatorId: req.user.id,
+          closedAt: new Date(),
+        },
+      });
+      const updated = await tx.listing.update({
+        where: { id: listingId },
+        data: { riskScore: 0 },
+      });
+      return { listingId, closedCases: closed.count, currentRiskScore: updated.riskScore };
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
+    return next(error);
+  }
+});
+
 router.get("/listings/:listingId/risk-signals", requireAuth, requireRoles("MODERATOR", "ADMIN"), async (req, res, next) => {
   try {
     const listingId = z.string().uuid().parse(req.params.listingId);
@@ -141,7 +210,7 @@ router.get("/listings/:listingId/risk-signals", requireAuth, requireRoles("MODER
     if (!listing) throw new ApiError(404, "NOT_FOUND", "Listing not found");
 
     const riskCases = await prisma.moderationCase.findMany({
-      where: { listingId, caseType: { in: ["RISK_FLAG", "LISTING_REVIEW"] } },
+      where: { listingId, caseType: { in: ["RISK_FLAG", "LISTING_REVIEW", "USER_REPORT"] } },
       orderBy: [{ createdAt: "desc" }],
       take: 20,
     });
@@ -158,6 +227,29 @@ router.get("/listings/:listingId/risk-signals", requireAuth, requireRoles("MODER
         createdAt: c.createdAt,
       })),
     });
+  } catch (error) {
+    if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
+    return next(error);
+  }
+});
+
+router.get("/listings/:listingId/full-context", requireAuth, requireRoles("MODERATOR", "ADMIN"), async (req, res, next) => {
+  try {
+    const listingId = z.string().uuid().parse(req.params.listingId);
+    const listing = await prisma.listing.findUnique({
+      where: { id: listingId },
+      include: {
+        media: { orderBy: { createdAt: "desc" } },
+        documents: {
+          include: { verifications: { orderBy: { createdAt: "desc" }, take: 5 } },
+          orderBy: { createdAt: "desc" },
+        },
+        moderationCases: { orderBy: { createdAt: "desc" }, take: 20 },
+        seller: { select: { id: true, displayName: true, role: true, trustScore: true, createdAt: true } },
+      },
+    });
+    if (!listing) throw new ApiError(404, "NOT_FOUND", "Listing not found");
+    return res.status(200).json(listing);
   } catch (error) {
     if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
     return next(error);

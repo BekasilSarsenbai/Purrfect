@@ -1,86 +1,169 @@
 # Purrfect Backend
 
-Production-oriented backend foundation for the Purrfect cat marketplace project.
+Production-grade backend for the Purrfect cat marketplace — escrow-based payments,
+veterinary inspection gate, evidence-driven disputes, asynchronous email notifications.
 
 ## Stack
 
-- Node.js + Express
-- Prisma ORM
+- Node.js + Express 5
+- Prisma ORM (zero raw SQL — every DB write goes through the ORM)
 - PostgreSQL 15
-- Redis 7 (sliding-window rate limiting on auth endpoints)
-- JWT access/refresh token auth with RBAC (4 roles: BUYER / SELLER / MODERATOR / ADMIN)
+- Redis 7 — sliding-window auth rate limiting, password-reset tokens, BullMQ broker
+- BullMQ — email queue + cron scheduler
+- Resend — transactional email provider (with `EMAIL_DELIVERY_MODE=log` fallback for dev)
+- JWT access (15m) + refresh (7d) with rotation, reuse-detection
+- RBAC (4 roles: BUYER / SELLER / MODERATOR / ADMIN)
+- Email verification gate on every business-write endpoint
 
 ## Local Run (Docker)
 
-1. Copy env file:
-
 ```bash
 cp .env.example .env
-```
-
-2. Start services:
-
-```bash
 docker compose up --build
 ```
 
-3. API endpoints:
+## Local Run (без Docker)
 
-- API base: `http://localhost:3000`
-- Health: `http://localhost:3000/health`
-- Swagger docs: `http://localhost:3000/docs`
+Если Docker недоступен, можно запустить с локальным Postgres и Redis:
+
+```bash
+# 1. Postgres + Redis
+brew services start postgresql@15
+brew install redis && brew services start redis
+
+# 2. Создать БД
+PGPASSWORD=123456 createdb -h localhost -U postgres purrfect
+
+# 3. В .env поставить DATABASE_URL=postgresql://postgres:123456@localhost:5432/purrfect?schema=public
+#    и REDIS_URL=redis://localhost:6379
+
+# 4. Миграции, сидер админа, API + worker (в двух терминалах)
+npm ci
+npx prisma migrate deploy
+npm run seed:admin       # создаёт ADMIN из ADMIN_EMAIL/PASSWORD в .env
+npm start                # API на :3000
+npm run worker           # отдельный процесс — email queue + cron
+```
+
+- API: `http://localhost:3000`
+- Health: `/health`, `/health/live`, `/health/ready`
+- Swagger UI: `http://localhost:3000/docs`
+- Email queue stats (ADMIN-only): `GET /admin/queues/email/stats`
+
+## Async Workflow Architecture
+
+Email отправка и периодические задачи — **отдельный процесс** (`npm run worker`),
+он подключается к тому же Redis. API кладёт job в BullMQ через `enqueueEmail()`
+и сразу отвечает клиенту; воркер обрабатывает асинхронно.
+
+```
+┌──────────┐ enqueueEmail()  ┌────────────────┐  Resend API
+│   API    │ ─────────────► │  BullMQ queue   │ ──────────►
+│ (Express)│                 │  (Redis)        │
+└──────────┘                 └─────┬───────────┘
+                                   │ pull
+                          ┌────────▼──────────┐
+                          │  npm run worker   │
+                          │  email-worker.js  │
+                          └────────┬──────────┘
+                                   │ scheduled
+                              ┌────▼─────┐
+                              │ cron jobs │
+                              └──────────┘
+```
+
+Cron расписание (репитеры BullMQ, регистрируются на старте воркера):
+
+| Job | Cron | Что делает |
+|---|---|---|
+| `inspection-deadline-reminder` | `0 * * * *` (каждый час) | Находит заказы со статусом `INSPECTION_ACTIVE`, у которых дедлайн в ближайшие 24ч, и кладёт reminder-emails в очередь. Idempotency: `{orderId, hour-bucket}`. |
+| `stale-verification-cleanup` | `30 3 * * *` (3:30 каждый день) | Чистит просроченные `emailVerificationToken` (>24ч после expiry). |
+
+Retry-policy для email queue: `attempts=3`, экспоненциальный backoff `5s → 25s → 125s`.
 
 ## Auth Endpoints
 
-- `POST /auth/register`
-- `POST /auth/login`
-- `POST /auth/refresh`
-- `POST /auth/logout`
-- `POST /auth/logout-all`
+- `POST /auth/register` — sends verification email asynchronously via the worker queue. New users have `emailVerifiedAt = null` until they confirm.
+- `POST /auth/verify-email` — accepts `{ token }`; one-time use, 24h TTL.
+- `POST /auth/resend-verification` — rate-limited; always returns 200 to prevent email enumeration.
+- `POST /auth/login` — credential check; returns access (15m) + refresh (7d).
+- `POST /auth/refresh` — rotates refresh; replays trigger reuse detection and revoke the whole token family.
+- `POST /auth/logout`, `POST /auth/logout-all`
+- `POST /auth/forgot-password` — queues a real password-reset email; Redis-backed token, 15-minute TTL.
+- `POST /auth/reset-password` — sets new password and revokes every refresh token.
 
-## RBAC Example
+## Users
 
-- `PATCH /admin/users/{userId}/role` requires `ADMIN`.
-- `POST /orders` requires `BUYER`.
-- `POST /listings` requires `SELLER`.
-- `GET /moderation/disputes` requires `MODERATOR` or `ADMIN`.
+- `GET /users/me`, `PATCH /users/me/profile`, `POST /users/me/account/delete`
+- `POST /users/me/change-password`
+- `GET /users/me/sessions`, `DELETE /users/me/sessions/{id}`
+- `GET /users/me/stats`
+- `GET /users/me/notifications`, `PATCH /users/me/notifications/{id}/read`, `POST /users/me/notifications/mark-all-read`
+- `GET /users/{userId}` — public profile
 
-## Business Endpoints (Sprint Baseline)
+## Listings
 
-- `POST /orders` — escrow hold + atomic payout creation (COMPLEXITY_REQ_1)
-- `POST /orders/:id/handover-confirm` — inspection gate with 72h deadline (COMPLEXITY_REQ_2)
-- `POST /disputes` — evidence-driven dispute engine (COMPLEXITY_REQ_3)
-- `GET /moderation/disputes` — moderation triage queue (COMPLEXITY_REQ_4)
-- `POST /orders/:id/inspection/approve` — inspection-gated final payout (COMPLEXITY_REQ_5)
-- `GET /orders` — cursor-based pagination
+- `GET /listings`, `GET /listings/search`, `GET /listings/me`
+- `POST /listings`, `GET /listings/{id}`, `PATCH /listings/{id}`, `DELETE /listings/{id}`
+- `POST /listings/{id}/submit-review`, `POST /listings/{id}/republish`, `POST /listings/{id}/report`
+- `POST/GET /listings/{id}/media`, `DELETE /listings/{id}/media/{mediaId}`
+- `POST/GET /listings/{id}/documents`, `DELETE /listings/{id}/documents/{docId}`
+- `POST /listings/{id}/documents/{docId}/verify`
 
-## Scripts
+`GET /listings/{id}` returns 404 for non-public statuses unless caller is owner / MODERATOR / ADMIN.
 
-- `npm run dev`
-- `npm run start`
-- `npm run lint`
-- `npm run test`
-- `npm run test:unit`
-- `npm run test:integration`
-- `npm run prisma:migrate`
-- `npm run prisma:deploy`
+## Orders & Inspections
+
+- `POST /orders` — atomic escrow + payouts + reservation. Concurrency-safe via Prisma `updateMany` compare-and-swap (no raw SQL). **Side-effect: queues `order.created.seller` email + writes in-app Notification.**
+- `GET /orders`, `GET /orders/{id}`, `POST /orders/{id}/cancel`
+- `POST /orders/{id}/handover-confirm` — milestone-1 release + 72h inspection window. **Side-effect: queues `order.handover.seller` email + writes in-app Notification.**
+- `POST /orders/{id}/inspection` (FAILED outcome auto-opens a dispute)
+- `POST /orders/{id}/inspection/approve` — milestone-2 release. **Side-effect: queues `order.completed.seller` email + writes in-app Notification.**
+- `GET /orders/{id}/transactions`, `/payouts`, `/timeline`, `/audit`
+
+## Disputes
+
+- `POST /disputes`, `GET /disputes`, `GET /disputes/{id}`
+- `POST /disputes/{id}/evidence`, `GET /disputes/{id}/evidence`
+- `POST /disputes/{id}/comments`, `GET /disputes/{id}/comments`
+- `POST /disputes/{id}/reopen` (14-day window)
+
+## Moderation
+
+- `GET/PATCH /moderation/cases`, `PATCH /moderation/cases/{id}/close`
+- `GET /moderation/disputes`, `POST /moderation/disputes/{id}/resolve`
+- `GET /moderation/listings`, `POST /moderation/listings/{id}/approve`, `POST /moderation/listings/{id}/reject`
+- `POST /moderation/listings/{id}/risk-flag`, `POST /moderation/listings/{id}/risk-flag/clear`
+- `GET /moderation/listings/{id}/risk-signals`, `GET /moderation/listings/{id}/full-context`
+
+## Admin
+
+- `PATCH /admin/users/{id}/role`, `PATCH /admin/users/{id}/status` — last-active-admin guard
+- `GET /admin/users`, `GET /admin/orders`, `POST /admin/orders/{id}/force-complete`
+- `GET /admin/audit-logs`, `GET /admin/dashboard-kpis`, `GET /admin/financial-summary`
 
 ## Architecture Notes
 
-- Environment fails fast (Zod) if required secrets are missing — including `REDIS_URL`.
-- Rate limiting uses a Redis sorted-set sliding window (5 req / 60 s per IP) — not in-memory.
-- Refresh token rotation: each refresh revokes the old token and issues a new one atomically.
-- Financial state changes in the order flow run inside Prisma `$transaction` — all or nothing.
-- Idempotency keys on every `EscrowTransaction` prevent duplicate financial writes.
-- Migration baseline is a single full-schema init migration; incremental migrations added as schema evolves.
+- **Zero raw SQL.** Every query goes through Prisma. Concurrency control on `POST /orders` is done with an atomic `listing.updateMany({where: {status: PUBLISHED}})` compare-and-swap — when two buyers race, only one `UPDATE` matches a `PUBLISHED` row, the other gets `count=0` and is rejected with 409. Equivalent to a row-level write lock without `SELECT FOR UPDATE`.
+- **Email verification gate.** `requireVerifiedEmail` middleware on every BUYER/SELLER write endpoint — unverified users get `403 EMAIL_NOT_VERIFIED`. ADMIN/MODERATOR pass through (created via seed / `POST /admin/users`).
+- **Side-effect ordering.** Emails are queued *after* the DB transaction commits. If the queue push fails, the user-facing action still succeeded; if the transaction fails, no email is sent. Reverse order would create ghost notifications.
+- **Idempotent enqueues.** Every email job carries an `idempotencyKey` (`notify:order-created:{orderId}`, `verify-email:{userId}:initial`, etc.) — BullMQ deduplicates retries.
+- **Rate limiting.** Redis sorted-set sliding window: 5 req / 60s / IP on `/auth/login`, `/auth/register`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/resend-verification`.
+- **Refresh token rotation** with reuse detection — replay revokes the entire family; family rotation tracked via `familyId`, individual tokens deduped via `jti`.
+- **AuditLog** is written for: admin role/status changes, admin-created users, dispute open/resolve/reopen, listing approve/reject, force-complete, moderation case close, auto-dispute.
+- **Listing publish** requires every `ListingDocument` to have a latest `APPROVED` verification.
+- `EscrowTransaction.idempotencyKey` includes a counter of prior refund/payout attempts so reopen-cycles don't collide.
+- `errorHandler` translates Prisma `P2002` → 409, `P2003` → 409, `P2025` → 404.
+
+## Scripts
+
+- `npm run dev` / `npm start` — API
+- `npm run worker` — BullMQ worker (email queue + cron). Run in a separate terminal.
+- `npm run seed:admin` — upsert ADMIN account from `.env` (`ADMIN_EMAIL`/`ADMIN_PASSWORD`)
+- `npm run lint`
+- `npm run test`, `npm run test:unit`, `npm run test:integration`
+- `npm run prisma:migrate`, `npm run prisma:deploy`
 
 ## Security Note
 
-`.env` is listed in `.gitignore`. If it was previously committed, run once:
-
-```bash
-git rm --cached .env
-git commit -m "chore: untrack .env"
-```
-
-Only `.env.example` should be committed to the repository.
+`.env` is ignored. Use `.env.example` as the committed reference.

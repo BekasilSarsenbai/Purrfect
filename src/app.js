@@ -5,6 +5,8 @@ const morgan = require("morgan");
 const swaggerUi = require("swagger-ui-express");
 const YAML = require("yamljs");
 const env = require("./config/env");
+const { prisma } = require("./config/prisma");
+const { redis } = require("./config/redis");
 const authRoutes = require("./routes/auth.routes");
 const usersRoutes = require("./routes/users.routes");
 const listingsRoutes = require("./routes/listings.routes");
@@ -38,6 +40,29 @@ app.use(
 
 app.get("/health", (req, res) => {
   return res.status(200).json({ status: "ok" });
+});
+
+app.get("/health/live", (req, res) => {
+  return res.status(200).json({ status: "live" });
+});
+
+app.get("/health/ready", async (req, res) => {
+  const checks = { db: "down", redis: "down" };
+  try {
+    // ORM-level liveness probe: count is a no-op safe query that exercises the connection.
+    await prisma.user.count();
+    checks.db = "up";
+  } catch (_e) {
+    /* keep "down" */
+  }
+  try {
+    const ping = await redis.ping();
+    checks.redis = ping === "PONG" ? "up" : "down";
+  } catch (_e) {
+    /* keep "down" */
+  }
+  const ready = checks.db === "up" && checks.redis === "up";
+  return res.status(ready ? 200 : 503).json({ status: ready ? "ready" : "not_ready", checks });
 });
 
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));

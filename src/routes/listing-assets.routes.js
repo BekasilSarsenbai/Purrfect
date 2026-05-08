@@ -109,6 +109,44 @@ router.get("/:listingId/documents", requireAuth, async (req, res, next) => {
   }
 });
 
+router.delete("/:listingId/media/:mediaId", requireAuth, requireRoles("SELLER"), async (req, res, next) => {
+  try {
+    const listingId = z.string().uuid().parse(req.params.listingId);
+    const mediaId = z.string().uuid().parse(req.params.mediaId);
+    const listing = await getOwnedListingOrThrow(listingId, req.user.id);
+    if (!["DRAFT", "PENDING_REVIEW"].includes(listing.status)) {
+      throw new ApiError(409, "CONFLICT", "Media can only be removed while listing is draft or pending review");
+    }
+    const media = await prisma.listingMedia.findUnique({ where: { id: mediaId } });
+    if (!media || media.listingId !== listingId) throw new ApiError(404, "NOT_FOUND", "Media not found");
+
+    await prisma.listingMedia.delete({ where: { id: mediaId } });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
+    return next(error);
+  }
+});
+
+router.delete("/:listingId/documents/:documentId", requireAuth, requireRoles("SELLER"), async (req, res, next) => {
+  try {
+    const listingId = z.string().uuid().parse(req.params.listingId);
+    const documentId = z.string().uuid().parse(req.params.documentId);
+    const listing = await getOwnedListingOrThrow(listingId, req.user.id);
+    if (!["DRAFT", "PENDING_REVIEW"].includes(listing.status)) {
+      throw new ApiError(409, "CONFLICT", "Documents can only be removed while listing is draft or pending review");
+    }
+    const document = await prisma.listingDocument.findUnique({ where: { id: documentId } });
+    if (!document || document.listingId !== listingId) throw new ApiError(404, "NOT_FOUND", "Document not found");
+
+    await prisma.listingDocument.delete({ where: { id: documentId } });
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
+    return next(error);
+  }
+});
+
 router.post("/:listingId/documents/:documentId/verify", requireAuth, requireRoles("MODERATOR", "ADMIN"), async (req, res, next) => {
   try {
     const listingId = z.string().uuid().parse(req.params.listingId);

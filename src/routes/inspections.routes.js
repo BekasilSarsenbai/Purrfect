@@ -1,8 +1,9 @@
 const express = require("express");
 const { z } = require("zod");
 const { prisma } = require("../config/prisma");
-const { requireAuth, requireRoles } = require("../middleware/auth");
+const { requireAuth, requireRoles, requireVerifiedEmail } = require("../middleware/auth");
 const { ApiError } = require("../utils/errors");
+const { recordInAppNotification, emitEmail } = require("../services/notification-service");
 
 const router = express.Router();
 
@@ -20,7 +21,7 @@ async function getOrderForBuyer(orderId, userId) {
   return order;
 }
 
-router.post("/:orderId/inspection", requireAuth, requireRoles("BUYER"), async (req, res, next) => {
+router.post("/:orderId/inspection", requireAuth, requireVerifiedEmail, requireRoles("BUYER"), async (req, res, next) => {
   try {
     const orderId = z.string().uuid().parse(req.params.orderId);
     const body = submitInspectionSchema.parse(req.body);
@@ -28,28 +29,60 @@ router.post("/:orderId/inspection", requireAuth, requireRoles("BUYER"), async (r
     if (order.status !== "INSPECTION_ACTIVE") throw new ApiError(409, "CONFLICT", "Inspection is not active");
     if (!order.inspectionDeadline || order.inspectionDeadline < new Date()) throw new ApiError(409, "CONFLICT", "Inspection window expired");
 
-    const inspection = await prisma.inspection.upsert({
-      where: { orderId },
-      create: {
-        orderId,
-        buyerId: req.user.id,
-        status: body.outcome,
-        clinicName: body.clinicName,
-        reportUrl: body.reportUrl,
-        notes: body.notes || null,
-        submittedAt: new Date(),
-        deadlineAt: order.inspectionDeadline,
-      },
-      update: {
-        status: body.outcome,
-        clinicName: body.clinicName,
-        reportUrl: body.reportUrl,
-        notes: body.notes || null,
-        submittedAt: new Date(),
-      },
+    const result = await prisma.$transaction(async (tx) => {
+      const inspection = await tx.inspection.upsert({
+        where: { orderId },
+        create: {
+          orderId,
+          buyerId: req.user.id,
+          status: body.outcome,
+          clinicName: body.clinicName,
+          reportUrl: body.reportUrl,
+          notes: body.notes || null,
+          submittedAt: new Date(),
+          deadlineAt: order.inspectionDeadline,
+        },
+        update: {
+          status: body.outcome,
+          clinicName: body.clinicName,
+          reportUrl: body.reportUrl,
+          notes: body.notes || null,
+          submittedAt: new Date(),
+        },
+      });
+
+      let autoDispute = null;
+      if (body.outcome === "FAILED") {
+        const existing = await tx.dispute.findUnique({ where: { orderId } });
+        if (!existing) {
+          autoDispute = await tx.dispute.create({
+            data: {
+              orderId,
+              openedById: req.user.id,
+              reasonCode: "HEALTH_MISMATCH",
+              status: "OPEN",
+              resolutionNote: `Auto-opened from FAILED inspection at ${body.clinicName}`,
+            },
+          });
+          await tx.order.update({ where: { id: orderId }, data: { status: "DISPUTED" } });
+          await tx.auditLog.create({
+            data: {
+              actorUserId: req.user.id,
+              action: "AUTO_DISPUTE_FROM_FAILED_INSPECTION",
+              entityType: "Order",
+              entityId: orderId,
+              afterJson: { disputeId: autoDispute.id, clinicName: body.clinicName },
+              ipAddress: req.ip,
+              userAgent: req.headers["user-agent"] || null,
+            },
+          });
+        }
+      }
+
+      return { inspection, autoDispute };
     });
 
-    return res.status(200).json(inspection);
+    return res.status(200).json(result);
   } catch (error) {
     if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
     return next(error);
@@ -75,7 +108,7 @@ router.get("/:orderId/inspection", requireAuth, async (req, res, next) => {
   }
 });
 
-router.post("/:orderId/inspection/approve", requireAuth, requireRoles("BUYER"), async (req, res, next) => {
+router.post("/:orderId/inspection/approve", requireAuth, requireVerifiedEmail, requireRoles("BUYER"), async (req, res, next) => {
   try {
     const orderId = z.string().uuid().parse(req.params.orderId);
     // COMPLEXITY_REQ_5: inspection-gated final payout release — milestone 2 is only
@@ -110,9 +143,32 @@ router.post("/:orderId/inspection/approve", requireAuth, requireRoles("BUYER"), 
         data: { status: "COMPLETED", completedAt: new Date() },
       });
       await tx.listing.update({ where: { id: order.listingId }, data: { status: "SOLD" } });
-      return updated;
+
+      await recordInAppNotification(tx, {
+        userId: order.sellerId,
+        templateCode: "order.completed.seller",
+        payloadJson: { orderId, payout2Kzt: Number(order.payout2Kzt) },
+      });
+
+      return { updated, sellerId: order.sellerId, payout2Kzt: Number(order.payout2Kzt) };
     });
-    return res.status(200).json(result);
+
+    const seller = await prisma.user.findUnique({
+      where: { id: result.sellerId },
+      select: { email: true, displayName: true },
+    });
+    await emitEmail({
+      to: seller?.email,
+      templateCode: "order.completed.seller",
+      payload: {
+        orderId,
+        payout2Kzt: result.payout2Kzt,
+        displayName: seller?.displayName || "продавец",
+      },
+      idempotencyKey: `notify:completed:${orderId}`,
+    });
+
+    return res.status(200).json(result.updated);
   } catch (error) {
     if (error instanceof z.ZodError) return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
     return next(error);
