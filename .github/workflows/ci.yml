@@ -41,6 +41,13 @@ jobs:
       CORS_ORIGINS: http://localhost:3000
       PLATFORM_FEE_PERCENT: 5
       REDIS_URL: redis://localhost:6379
+      ADMIN_EMAIL: admin@purrfect.local
+      ADMIN_PASSWORD: AdminPass!CI_2026
+      ADMIN_DISPLAY_NAME: CI Admin
+      RESEND_API_KEY: re_ci_dummy_key_not_used_in_log_mode
+      EMAIL_FROM: Purrfect <onboarding@resend.dev>
+      APP_BASE_URL: http://localhost:3000
+      EMAIL_DELIVERY_MODE: log
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
