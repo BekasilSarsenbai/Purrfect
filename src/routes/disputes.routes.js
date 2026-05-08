@@ -113,7 +113,7 @@ router.post("/", requireAuth, requireVerifiedEmail, async (req, res, next) => {
       payload: {
         orderId: body.orderId,
         reasonCode: body.reasonCode,
-        displayName: counterparty?.displayName || "пользователь",
+        displayName: counterparty?.displayName || "user",
       },
       idempotencyKey: `notify:dispute-opened:${created.dispute.id}`,
     });

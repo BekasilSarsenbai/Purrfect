@@ -22,27 +22,27 @@ cp .env.example .env
 docker compose up --build
 ```
 
-## Local Run (без Docker)
+## Local Run (without Docker)
 
-Если Docker недоступен, можно запустить с локальным Postgres и Redis:
+If Docker is not available, run against local Postgres + Redis:
 
 ```bash
 # 1. Postgres + Redis
 brew services start postgresql@15
 brew install redis && brew services start redis
 
-# 2. Создать БД
+# 2. Create the database
 PGPASSWORD=123456 createdb -h localhost -U postgres purrfect
 
-# 3. В .env поставить DATABASE_URL=postgresql://postgres:123456@localhost:5432/purrfect?schema=public
-#    и REDIS_URL=redis://localhost:6379
+# 3. In .env set DATABASE_URL=postgresql://postgres:123456@localhost:5432/purrfect?schema=public
+#    and REDIS_URL=redis://localhost:6379
 
-# 4. Миграции, сидер админа, API + worker (в двух терминалах)
+# 4. Migrations, admin seeder, API + worker (use two terminals)
 npm ci
 npx prisma migrate deploy
-npm run seed:admin       # создаёт ADMIN из ADMIN_EMAIL/PASSWORD в .env
-npm start                # API на :3000
-npm run worker           # отдельный процесс — email queue + cron
+npm run seed:admin       # upserts ADMIN from ADMIN_EMAIL/PASSWORD in .env
+npm start                # API on :3000
+npm run worker           # separate process — email queue + cron
 ```
 
 - API: `http://localhost:3000`
@@ -52,9 +52,9 @@ npm run worker           # отдельный процесс — email queue + c
 
 ## Async Workflow Architecture
 
-Email отправка и периодические задачи — **отдельный процесс** (`npm run worker`),
-он подключается к тому же Redis. API кладёт job в BullMQ через `enqueueEmail()`
-и сразу отвечает клиенту; воркер обрабатывает асинхронно.
+Email delivery and recurring jobs run in a **separate process** (`npm run worker`)
+connected to the same Redis. The API enqueues jobs via `enqueueEmail()` and
+responds immediately; the worker processes them asynchronously.
 
 ```
 ┌──────────┐ enqueueEmail()  ┌────────────────┐  Resend API
@@ -72,14 +72,14 @@ Email отправка и периодические задачи — **отде
                               └──────────┘
 ```
 
-Cron расписание (репитеры BullMQ, регистрируются на старте воркера):
+Cron schedule (BullMQ repeatables, registered on worker boot):
 
-| Job | Cron | Что делает |
+| Job | Cron | What it does |
 |---|---|---|
-| `inspection-deadline-reminder` | `0 * * * *` (каждый час) | Находит заказы со статусом `INSPECTION_ACTIVE`, у которых дедлайн в ближайшие 24ч, и кладёт reminder-emails в очередь. Idempotency: `{orderId, hour-bucket}`. |
-| `stale-verification-cleanup` | `30 3 * * *` (3:30 каждый день) | Чистит просроченные `emailVerificationToken` (>24ч после expiry). |
+| `inspection-deadline-reminder` | `0 * * * *` (hourly) | Finds orders in `INSPECTION_ACTIVE` whose deadline lands within the next 24h and queues reminder emails. Idempotency: `{orderId, hour-bucket}`. |
+| `stale-verification-cleanup` | `30 3 * * *` (daily, 03:30) | Wipes expired `emailVerificationToken*` columns (>24h past expiry). |
 
-Retry-policy для email queue: `attempts=3`, экспоненциальный backoff `5s → 25s → 125s`.
+Email queue retry policy: `attempts=3`, exponential backoff `5s → 25s → 125s`.
 
 ## Auth Endpoints
 

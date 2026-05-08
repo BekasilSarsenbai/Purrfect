@@ -107,7 +107,7 @@ router.post("/", requireAuth, requireVerifiedEmail, requireRoles("BUYER"), async
         orderId: order.createdOrder.id,
         listingTitle: listingTitle || "(unknown listing)",
         totalKzt: order.totalKzt,
-        displayName: seller?.displayName || "продавец",
+        displayName: seller?.displayName || "seller",
       },
       idempotencyKey: `notify:order-created:${order.createdOrder.id}`,
     });
@@ -192,7 +192,7 @@ router.post("/:orderId/handover-confirm", requireAuth, requireVerifiedEmail, req
       payload: {
         orderId: updated.nextOrder.id,
         payout1Kzt: updated.payout1Kzt,
-        displayName: seller?.displayName || "продавец",
+        displayName: seller?.displayName || "seller",
       },
       idempotencyKey: `notify:handover:${updated.nextOrder.id}`,
     });

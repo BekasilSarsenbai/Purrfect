@@ -36,7 +36,7 @@ async function inspectionDeadlineReminder() {
       payload: {
         orderId: order.id,
         payout1Kzt: 0,
-        displayName: order.buyer.displayName || "клиент",
+        displayName: order.buyer.displayName || "buyer",
       },
       idempotencyKey: `reminder:inspect:${order.id}:${hourBucket}`,
     });

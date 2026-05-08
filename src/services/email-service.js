@@ -5,61 +5,61 @@ const resendClient = env.EMAIL_DELIVERY_MODE === "live" ? new Resend(env.RESEND_
 
 const TEMPLATES = {
   "auth.verify": ({ verificationUrl, displayName }) => ({
-    subject: "Подтвердите email — Purrfect",
+    subject: "Verify your email — Purrfect",
     html: `
-      <h2>Привет, ${escape(displayName)}!</h2>
-      <p>Спасибо за регистрацию на Purrfect. Чтобы активировать аккаунт и получить доступ к функциям маркетплейса, подтвердите ваш email:</p>
-      <p><a href="${verificationUrl}" style="display:inline-block;padding:10px 16px;background:#1f6feb;color:#fff;border-radius:6px;text-decoration:none">Подтвердить email</a></p>
-      <p>Ссылка действительна 24 часа. Если вы не регистрировались — проигнорируйте это письмо.</p>
+      <h2>Hi, ${escape(displayName)}!</h2>
+      <p>Thanks for signing up to Purrfect. To activate your account and unlock marketplace features, please verify your email address:</p>
+      <p><a href="${verificationUrl}" style="display:inline-block;padding:10px 16px;background:#1f6feb;color:#fff;border-radius:6px;text-decoration:none">Verify email</a></p>
+      <p>This link expires in 24 hours. If you did not sign up, please ignore this message.</p>
     `,
   }),
 
   "auth.password-reset": ({ resetUrl, displayName }) => ({
-    subject: "Сброс пароля — Purrfect",
+    subject: "Password reset — Purrfect",
     html: `
-      <h2>Здравствуйте, ${escape(displayName)}.</h2>
-      <p>По вашему запросу мы выслали ссылку для сброса пароля. Она действительна 15 минут.</p>
-      <p><a href="${resetUrl}" style="display:inline-block;padding:10px 16px;background:#1f6feb;color:#fff;border-radius:6px;text-decoration:none">Установить новый пароль</a></p>
-      <p>Если вы не запрашивали сброс — проигнорируйте письмо. Текущий пароль не изменён.</p>
+      <h2>Hello, ${escape(displayName)}.</h2>
+      <p>You requested a password reset. The link below is valid for 15 minutes.</p>
+      <p><a href="${resetUrl}" style="display:inline-block;padding:10px 16px;background:#1f6feb;color:#fff;border-radius:6px;text-decoration:none">Set a new password</a></p>
+      <p>If you didn't request a reset, please ignore this email — your current password remains unchanged.</p>
     `,
   }),
 
   "order.created.seller": ({ orderId, listingTitle, totalKzt, displayName }) => ({
-    subject: `Новый заказ на ваше объявление — Purrfect`,
+    subject: `New order for your listing — Purrfect`,
     html: `
-      <h2>Поздравляем, ${escape(displayName)}!</h2>
-      <p>Покупатель оформил заказ на ваше объявление <b>${escape(listingTitle)}</b>.</p>
-      <p>Сумма ${formatKzt(totalKzt)} удержана на эскроу платформы. Свяжитесь с покупателем для согласования передачи.</p>
+      <h2>Congratulations, ${escape(displayName)}!</h2>
+      <p>A buyer has placed an order for your listing <b>${escape(listingTitle)}</b>.</p>
+      <p>The amount ${formatKzt(totalKzt)} is held in platform escrow. Please contact the buyer to coordinate the handover.</p>
       <p>Order ID: <code>${escape(orderId)}</code></p>
     `,
   }),
 
   "order.handover.seller": ({ orderId, payout1Kzt, displayName }) => ({
-    subject: `Передача подтверждена — выплата ${formatKzt(payout1Kzt)}`,
+    subject: `Handover confirmed — payout ${formatKzt(payout1Kzt)}`,
     html: `
-      <h2>${escape(displayName)}, передача подтверждена.</h2>
-      <p>Покупатель подтвердил получение животного. Первая часть оплаты <b>${formatKzt(payout1Kzt)}</b> переведена на ваш счёт.</p>
-      <p>Финальная часть будет переведена после успешной ветеринарной проверки покупателем (до 72 часов).</p>
+      <h2>${escape(displayName)}, the handover has been confirmed.</h2>
+      <p>The buyer has confirmed receiving the animal. The first milestone payout of <b>${formatKzt(payout1Kzt)}</b> has been released to your account.</p>
+      <p>The final payout will be released after the buyer completes a successful veterinary inspection (within 72 hours).</p>
       <p>Order ID: <code>${escape(orderId)}</code></p>
     `,
   }),
 
   "order.completed.seller": ({ orderId, payout2Kzt, displayName }) => ({
-    subject: `Сделка завершена — финальная выплата ${formatKzt(payout2Kzt)}`,
+    subject: `Order completed — final payout ${formatKzt(payout2Kzt)}`,
     html: `
-      <h2>${escape(displayName)}, сделка завершена.</h2>
-      <p>Покупатель подтвердил успешную ветеринарную проверку. Вторая часть оплаты <b>${formatKzt(payout2Kzt)}</b> переведена на ваш счёт.</p>
-      <p>Спасибо за ответственное оформление сделки на Purrfect.</p>
+      <h2>${escape(displayName)}, the order is now complete.</h2>
+      <p>The buyer has confirmed a successful veterinary inspection. The second milestone payout of <b>${formatKzt(payout2Kzt)}</b> has been released to your account.</p>
+      <p>Thanks for handling this transaction responsibly on Purrfect.</p>
       <p>Order ID: <code>${escape(orderId)}</code></p>
     `,
   }),
 
   "dispute.opened.seller": ({ orderId, reasonCode, displayName }) => ({
-    subject: `Открыт спор по заказу — требуется внимание`,
+    subject: `A dispute has been opened — action required`,
     html: `
-      <h2>${escape(displayName)}, по сделке открыт спор.</h2>
-      <p>Причина: <b>${escape(reasonCode)}</b>.</p>
-      <p>Финальная выплата приостановлена до решения модератора. Загрузите доказательства (фото, переписку, медицинские документы) в раздел Disputes.</p>
+      <h2>${escape(displayName)}, a dispute has been opened on this order.</h2>
+      <p>Reason: <b>${escape(reasonCode)}</b>.</p>
+      <p>The final payout is paused until a moderator resolves the case. Please upload supporting evidence (photos, conversation, medical documents) under the Disputes section.</p>
       <p>Order ID: <code>${escape(orderId)}</code></p>
     `,
   }),
@@ -76,7 +76,7 @@ function escape(value) {
 
 function formatKzt(amount) {
   const n = Number(amount || 0);
-  return `${n.toLocaleString("ru-RU")} ₸`;
+  return `${n.toLocaleString("en-US")} KZT`;
 }
 
 function renderTemplate(templateCode, payload) {

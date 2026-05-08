@@ -20,7 +20,7 @@ describe("email-service.renderTemplate", () => {
       verificationUrl: "https://app.example/auth/verify-email?token=abc",
       displayName: "Sarsen",
     });
-    expect(out.subject).toMatch(/Подтвердите email/);
+    expect(out.subject).toMatch(/Verify your email/);
     expect(out.html).toContain("https://app.example/auth/verify-email?token=abc");
     expect(out.html).toContain("Sarsen");
   });
@@ -43,9 +43,8 @@ describe("email-service.renderTemplate", () => {
       payout1Kzt: 118750,
       displayName: "Seller",
     });
-    // ru-RU locale uses U+00A0 (non-breaking space) as the thousands separator.
-    expect(out.subject.replaceAll(" ", " ")).toContain("118 750");
-    expect(out.subject).toContain("₸");
+    expect(out.subject).toContain("118,750");
+    expect(out.subject).toContain("KZT");
   });
 
   it("throws on unknown template code", () => {

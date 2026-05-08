@@ -163,7 +163,7 @@ router.post("/:orderId/inspection/approve", requireAuth, requireVerifiedEmail, r
       payload: {
         orderId,
         payout2Kzt: result.payout2Kzt,
-        displayName: seller?.displayName || "продавец",
+        displayName: seller?.displayName || "seller",
       },
       idempotencyKey: `notify:completed:${orderId}`,
     });
