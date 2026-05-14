@@ -93,7 +93,6 @@ model User {
   moderationCases             ModerationCase[] @relation("ModeratorCases")
   disputesOpened              Dispute[]       @relation("OpenedByUser")
   auditLogs                   AuditLog[]
-  notifications               Notification[]
 }
 
 model RefreshToken {
@@ -319,18 +318,3 @@ model AuditLog {
   @@index([action, createdAt])
 }
 
-model Notification {
-  id           String   @id @default(uuid())
-  userId       String
-  channel      String
-  templateCode String
-  payloadJson  Json
-  status       String
-  retryCount   Int      @default(0)
-  nextRetryAt  DateTime?
-  createdAt    DateTime @default(now())
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([status, nextRetryAt])
-}

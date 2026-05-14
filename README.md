@@ -98,7 +98,6 @@ Email queue retry policy: `attempts=3`, exponential backoff `5s → 25s → 125s
 - `POST /users/me/change-password`
 - `GET /users/me/sessions`, `DELETE /users/me/sessions/{id}`
 - `GET /users/me/stats`
-- `GET /users/me/notifications`, `PATCH /users/me/notifications/{id}/read`, `POST /users/me/notifications/mark-all-read`
 - `GET /users/{userId}` — public profile
 
 ## Listings
@@ -114,11 +113,11 @@ Email queue retry policy: `attempts=3`, exponential backoff `5s → 25s → 125s
 
 ## Orders & Inspections
 
-- `POST /orders` — atomic escrow + payouts + reservation. Concurrency-safe via Prisma `updateMany` compare-and-swap (no raw SQL). **Side-effect: queues `order.created.seller` email + writes in-app Notification.**
+- `POST /orders` — atomic escrow + payouts + reservation. Concurrency-safe via Prisma `updateMany` compare-and-swap (no raw SQL). **Side-effect: queues `order.created.seller` email.**
 - `GET /orders`, `GET /orders/{id}`, `POST /orders/{id}/cancel`
-- `POST /orders/{id}/handover-confirm` — milestone-1 release + 72h inspection window. **Side-effect: queues `order.handover.seller` email + writes in-app Notification.**
+- `POST /orders/{id}/handover-confirm` — milestone-1 release + 72h inspection window. **Side-effect: queues `order.handover.seller` email.**
 - `POST /orders/{id}/inspection` (FAILED outcome auto-opens a dispute)
-- `POST /orders/{id}/inspection/approve` — milestone-2 release. **Side-effect: queues `order.completed.seller` email + writes in-app Notification.**
+- `POST /orders/{id}/inspection/approve` — milestone-2 release. **Side-effect: queues `order.completed.seller` email.**
 - `GET /orders/{id}/transactions`, `/payouts`, `/timeline`, `/audit`
 
 ## Disputes

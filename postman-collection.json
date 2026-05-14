@@ -61,6 +61,105 @@
           }
         },
         {
+          "name": "DEV: Get Verification Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res && res.verificationToken) {",
+                  "  pm.collectionVariables.set('verificationToken', res.verificationToken);",
+                  "  if (pm.environment.name) pm.environment.set('verificationToken', res.verificationToken);",
+                  "  console.log('verificationToken saved:', res.verificationToken.slice(0,16) + '…');",
+                  "} else if (res && res.alreadyVerified) {",
+                  "  console.log('User is already verified — no new token issued.');",
+                  "} else {",
+                  "  console.warn('No verificationToken in response — body:', JSON.stringify(res));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/auth/_dev/verification-token?email=buyer.demo@purrfect.kz",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "_dev",
+                "verification-token"
+              ],
+              "query": [
+                {
+                  "key": "email",
+                  "value": "buyer.demo@purrfect.kz"
+                }
+              ]
+            },
+            "description": "DEV-ONLY. Rotates the verification token for the given email and returns the raw token in the response, then the test script auto-saves it to the {{verificationToken}} collection variable. After running this, send 'Verify Email' to confirm. Endpoint refuses to run when NODE_ENV=production."
+          }
+        },
+        {
+          "name": "Verify Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/verify-email",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "verify-email"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{verificationToken}}\"\n}"
+            },
+            "description": "Confirms the email using the token captured by 'DEV: Get Verification Token'. In production, the token comes from the real verification email instead. Returns 200 on success, 401 if token is invalid/expired."
+          }
+        },
+        {
+          "name": "Resend Verification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/resend-verification",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "resend-verification"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"buyer.demo@purrfect.kz\"\n}"
+            },
+            "description": "Re-sends the verification email. Always returns 200 to avoid leaking which addresses exist. Rate-limited (5/min/IP)."
+          }
+        },
+        {
           "name": "Login",
           "request": {
             "method": "POST",
@@ -421,84 +520,6 @@
                 "users",
                 "me",
                 "stats"
-              ]
-            }
-          }
-        },
-        {
-          "name": "List Notifications",
-          "request": {
-            "method": "GET",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/users/me/notifications?limit=20",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "users",
-                "me",
-                "notifications"
-              ],
-              "query": [
-                {
-                  "key": "limit",
-                  "value": "20"
-                }
-              ]
-            }
-          }
-        },
-        {
-          "name": "Mark Notification Read",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/users/me/notifications/{{notificationId}}/read",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "users",
-                "me",
-                "notifications",
-                "{{notificationId}}",
-                "read"
-              ]
-            }
-          }
-        },
-        {
-          "name": "Mark All Notifications Read",
-          "request": {
-            "method": "POST",
-            "header": [
-              {
-                "key": "Authorization",
-                "value": "Bearer {{accessToken}}"
-              }
-            ],
-            "url": {
-              "raw": "{{baseUrl}}/users/me/notifications/mark-all-read",
-              "host": [
-                "{{baseUrl}}"
-              ],
-              "path": [
-                "users",
-                "me",
-                "notifications",
-                "mark-all-read"
               ]
             }
           }
@@ -2308,8 +2329,9 @@
       "value": ""
     },
     {
-      "key": "notificationId",
-      "value": ""
+      "key": "verificationToken",
+      "value": "",
+      "description": "Token from the verification email. Copy from the link after registration."
     }
   ]
 }

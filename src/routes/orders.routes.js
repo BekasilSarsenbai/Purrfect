@@ -7,7 +7,7 @@ const { requireAuth, requireRoles, requireVerifiedEmail } = require("../middlewa
 const { calculateSettlement } = require("../services/settlement-service");
 const { parsePagination, buildPagedResponse } = require("../utils/pagination");
 const { ApiError } = require("../utils/errors");
-const { recordInAppNotification, emitEmail } = require("../services/notification-service");
+const { emitEmail } = require("../services/notification-service");
 
 const router = express.Router();
 
@@ -80,12 +80,6 @@ router.post("/", requireAuth, requireVerifiedEmail, requireRoles("BUYER"), async
           { orderId: createdOrder.id, milestone: 1, amountKzt: settlement.payout1Kzt, status: "FROZEN" },
           { orderId: createdOrder.id, milestone: 2, amountKzt: settlement.payout2Kzt, status: "FROZEN" },
         ],
-      });
-
-      await recordInAppNotification(tx, {
-        userId: listing.sellerId,
-        templateCode: "order.created.seller",
-        payloadJson: { orderId: createdOrder.id, totalKzt: Number(settlement.totalAmountKzt) },
       });
 
       return { createdOrder, sellerId: listing.sellerId, totalKzt: Number(settlement.totalAmountKzt) };
@@ -171,12 +165,6 @@ router.post("/:orderId/handover-confirm", requireAuth, requireVerifiedEmail, req
           status: "PENDING",
           deadlineAt: inspectionDeadline,
         },
-      });
-
-      await recordInAppNotification(tx, {
-        userId: order.sellerId,
-        templateCode: "order.handover.seller",
-        payloadJson: { orderId: order.id, payout1Kzt: Number(order.payout1Kzt) },
       });
 
       return { nextOrder, sellerId: order.sellerId, payout1Kzt: Number(order.payout1Kzt) };

@@ -135,6 +135,49 @@ const resendVerificationSchema = z.object({
   email: z.string().email(),
 });
 
+// DEV-only helper: rotate the verification token for an email and return the raw value
+// so a Postman test script can pick it up without the user having to open Gmail or grep logs.
+// Refuses to run when NODE_ENV === "production".
+if (env.NODE_ENV !== "production") {
+  router.get("/_dev/verification-token", async (req, res, next) => {
+    try {
+      const email = z.string().email().parse(req.query.email);
+      const user = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true, emailVerifiedAt: true, status: true },
+      });
+      if (!user) throw new ApiError(404, "NOT_FOUND", "User not found");
+      if (user.status !== "ACTIVE") throw new ApiError(409, "CONFLICT", "User is not active");
+      if (user.emailVerifiedAt) {
+        return res.status(200).json({ alreadyVerified: true, email });
+      }
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const tokenHash = hashToken(token);
+      const expiresAt = new Date(Date.now() + VERIFICATION_TTL_HOURS * 60 * 60 * 1000);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          emailVerificationTokenHash: tokenHash,
+          emailVerificationExpiresAt: expiresAt,
+        },
+      });
+
+      return res.status(200).json({
+        warning: "DEV-only endpoint — disabled when NODE_ENV=production",
+        email,
+        verificationToken: token,
+        expiresAt,
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return next(new ApiError(422, "VALIDATION_ERROR", "Validation failed", error.flatten()));
+      }
+      return next(error);
+    }
+  });
+}
+
 router.post("/verify-email", async (req, res, next) => {
   try {
     // Token may arrive in body OR query (link click) — accept both.

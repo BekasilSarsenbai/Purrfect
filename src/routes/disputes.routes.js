@@ -2,7 +2,7 @@ const express = require("express");
 const { z } = require("zod");
 const { prisma } = require("../config/prisma");
 const { requireAuth, requireVerifiedEmail } = require("../middleware/auth");
-const { recordInAppNotification, emitEmail } = require("../services/notification-service");
+const { emitEmail } = require("../services/notification-service");
 const { parsePagination, buildPagedResponse } = require("../utils/pagination");
 const { ApiError } = require("../utils/errors");
 
@@ -92,14 +92,7 @@ router.post("/", requireAuth, requireVerifiedEmail, async (req, res, next) => {
         },
       });
 
-      // Notify the *other* side: if seller opened it, ping buyer; otherwise ping seller.
       const counterpartyId = req.user.id === order.sellerId ? order.buyerId : order.sellerId;
-      await recordInAppNotification(tx, {
-        userId: counterpartyId,
-        templateCode: "dispute.opened.seller",
-        payloadJson: { orderId: body.orderId, disputeId: dispute.id, reasonCode: body.reasonCode },
-      });
-
       return { dispute, counterpartyId };
     });
 

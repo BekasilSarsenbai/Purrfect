@@ -3,7 +3,7 @@ const { z } = require("zod");
 const { prisma } = require("../config/prisma");
 const { requireAuth, requireRoles, requireVerifiedEmail } = require("../middleware/auth");
 const { ApiError } = require("../utils/errors");
-const { recordInAppNotification, emitEmail } = require("../services/notification-service");
+const { emitEmail } = require("../services/notification-service");
 
 const router = express.Router();
 
@@ -143,12 +143,6 @@ router.post("/:orderId/inspection/approve", requireAuth, requireVerifiedEmail, r
         data: { status: "COMPLETED", completedAt: new Date() },
       });
       await tx.listing.update({ where: { id: order.listingId }, data: { status: "SOLD" } });
-
-      await recordInAppNotification(tx, {
-        userId: order.sellerId,
-        templateCode: "order.completed.seller",
-        payloadJson: { orderId, payout2Kzt: Number(order.payout2Kzt) },
-      });
 
       return { updated, sellerId: order.sellerId, payout2Kzt: Number(order.payout2Kzt) };
     });
